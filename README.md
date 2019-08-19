@@ -6,7 +6,11 @@ The idea is to let you :
 ```
 %load_ext autoreload
 %autoreload 2
+```
 
+and
+
+```
 import os
 if not os.path.isdir('worldtree_corpus'):
   ! git clone https://github.com/mdda/worldtree_corpus
@@ -18,7 +22,14 @@ at the top of a notebook, and have a bunch of useful stuff ready-to-go
 so as to avoid collisions with your existing code).
 
 
+### Text cleansing
+
+```
+wtc.preprocess.convert_texts(["Which of these will most likely increase?", "Habitats support animals."])
+```
+
 ### Preprocessing 
+
 
 ```
 import pandas

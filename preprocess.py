@@ -5,10 +5,10 @@ import os, sys
 import json
 import re
 
-import numpy
-import pandas
+from pathlib import Path
 
-import nltk
+import numpy as np
+import pandas as pd
 
 """
 path_data = "tg2019task/worldtree_corpus_textgraphs2019sharedtask_withgraphvis"
@@ -21,6 +21,8 @@ if not Path(path_data).exists():
     !cd {path_data} && python ../evaluate.py --gold=questions/ARC-Elementary+EXPL-Dev.tsv predict.txt
 """
 
+
+import nltk
 
 import spacy
 nlp = spacy.load("en_core_web_sm")
@@ -72,7 +74,7 @@ def convert_texts(texts, remove_stop=True, remove_punct=True):
 
 def get_questions(path_questions, fname):
     df = pd.read_csv(Path(path_questions).joinpath(fname), sep="\t")
-    tokens, lemmas = preprocess_texts(df.Question)
+    tokens, lemmas = convert_texts(df.Question)
     df["tokens"] = tokens
     df["lemmas"] = lemmas
     print(df.shape)
@@ -147,6 +149,7 @@ def read_explanations_with_permutations(path, uids_existing):  # uids_existing i
         
     return arr
 
+
 def get_df_explanations(path_tables):
     explanations, uids_existing = [], set()
     for p in path_tables.iterdir():
@@ -161,28 +164,83 @@ def get_df_explanations(path_tables):
     #df = df.drop_duplicates("uid")  # NOO!
     #return df
 
-    tokens, lemmas = preprocess_texts(df.text)
+    tokens, lemmas = convert_texts(df.text)
     #df["tokens"] = tokens
     df["lemmas"] = lemmas
     
     for idx in df.index:
         musthave=df.at[idx, 'musthave']
-        for i, musthave_lemma in enumerate(preprocess_texts(musthave)[1]):
+        for i, musthave_lemma in enumerate(convert_texts(musthave)[1]):
             if len(musthave_lemma)==0:
                 print(f"Need to have lemma of '{musthave[i]}' in :\n  '{df.at[idx, 'orig']}'")
     
     print(df.shape)
     return df
 
-def decompose_questions(df):
+
+
+def flatten(nested_list):
+    return [item for lst in nested_list for item in lst]
+
+def get_flattened_items(dfs, field):
+    all_items = []
+    for df in dfs:
+        all_items.extend(flatten(df[field]))
+    return all_items
+
+#all_lemmas = get_flattened_items([df_trn, df_dev, df_test, df_exp], "lemmas")
+#80307 original
+#80061 all lower-cased, no white-space
+# all_tokens = get_flattened_items([df_trn, df_dev, df_test, df_exp], "tokens")
+#88152 with 'combos' within exp unravelled
+    
+#unique_lemmas = sorted(list(set(all_lemmas)))
+#node_lemma = unique_lemmas
+#n_nodes=len(node_lemma)
+#print(n_nodes)
+#5262 with upper+lower case
+#4754 all lower-cased
+#4751 all lower-cased, no white-space
+#4758 with whitelist_words
+#4766 with whitelist_words including some required to lengthen explanations
+#4717 as above with ';'->'; ' fix
+#4716 with 'combos' within exp unravelled
+
+#lemma2node = {lemma:idx for idx, lemma in enumerate(node_lemma)}
+#def nodes_to_sentence(nodes):
+#    return ' '.join([ node_lemma[n] for n in nodes ])
+    
+#df_lemma = pd.DataFrame({
+#    "node": unique_lemmas,
+#    "embedding": None,
+#})
+#df_lemma.sample(5, random_state=42)
+
+def get_node_fns( dfs ):
+    all_lemmas = get_flattened_items(dfs, "lemmas")
+    unique_lemmas = sorted(list(set(all_lemmas)))
+    print(f"Total number of lemmas found : {len(all_lemmas):d}, unique : {len(unique_lemmas)}")
+
+    node_lemma = unique_lemmas
+    #n_nodes=len(node_lemma)
+    
+    lemma2node = {lemma:idx for idx, lemma in enumerate(node_lemma)}
+    def nodes_to_sentence(nodes):
+        return ' '.join([ node_lemma[n] for n in nodes ])
+    
+    return node_lemma, lemma2node
+
+def decompose_questions(df, lemma2node):
+    def get_nodes(lemmas):
+        return [lemma2node[lemma] for lemma in lemmas]
+
     df['q_lem'], df['a_lem']=None,None
     for prob in df.index:
-        #multi=re.split(r'(\([ABCDEF]\))', df.at[i,'Question'])  # Keeps answer letters
         multi=re.split(r'\([ABCDEF]\)\s*', df.at[prob,'Question'])
         j_ans = 'ABCDEF'.find(df.at[prob,'AnswerKey'])+1
-        #print(multi)
+
         q_lem, a_lem=None, []
-        _, lemmas = preprocess_texts(multi)
+        _, lemmas = convert_texts(multi)
         for j,ls in enumerate(lemmas):
             #print(ls)
             ids = get_nodes(ls)
@@ -197,6 +255,7 @@ def decompose_questions(df):
                     a_lem.insert(0, ids)
                 else:           # Wrong answers come after correct one
                     a_lem.append(ids)
+
         if False:
             print(q_lem)
             for a in a_lem:
@@ -205,10 +264,39 @@ def decompose_questions(df):
         df.at[prob,'q_lem']=q_lem
         df.at[prob,'a_lem']=a_lem
         
-        if True: # Create the a version for TFIDF
-            question_with_ans = q_lem+a_lem[0]
-            df.at[prob,'q_tfidf']=' '.join(
-                [ node_lemma[n] for n in question_with_ans ]
-            )
-        #if i>4: break
-        #print()
+
+def add_tfidf_questions(df, node_lemma):
+    for prob in df.index:
+        question_with_ans = df.at[prob,'q_lem'] + df.at[prob,'a_lem'][0]
+        df.at[prob,'q_tfidf']=' '.join(
+            [ node_lemma[n] for n in question_with_ans ]
+        )
+  
+def add_tfidf_explanation(dfe, node_lemma):
+    for e in dfe.index:
+        ex_nodes = dfe.at[e,'nodes']
+        dfe.at[e,'e_tfidf']=' '.join([ node_lemma[n] for n in ex_nodes ])
+
+
+def add_gold_explanation_idx(df, df_exp):
+    df['ex_gold']=None
+    df['ex_reason']=None
+    for prob in df.index:
+        exs_str = df.at[prob, 'explanation']
+        ex_arr, reason_arr = [],[]
+        if type(exs_str) is str: 
+            for ex_str in exs_str.split(' '):
+                uid, reason = ex_str.split('|')
+                ex_uid_rows = df_exp[ df_exp['uid_raw'] == uid ]
+                exs_arr=[]
+                for i in range(len(ex_uid_rows)):
+                    exs_arr.append( df_exp.index.get_loc(ex_uid_rows.iloc[i].name) ) 
+                if 0==len(exs_arr):
+                    print("Missing ID '%s' in '%s'" % (uid, exs_str,))
+                    continue # missing uid, somehow
+                #print(exs_arr)
+                ex_arr.append(exs_arr)
+                reason_arr.append(reason)
+        df.at[prob, 'ex_gold']=ex_arr # Each explanation is an array of uid_raw aliases
+        df.at[prob, 'ex_reason']=reason_arr  # Only for those found
+        
