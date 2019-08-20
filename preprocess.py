@@ -23,6 +23,7 @@ if not Path(path_data).exists():
 
 
 import nltk
+nltk.download("stopwords")
 
 import spacy
 nlp = spacy.load("en_core_web_sm")
@@ -51,6 +52,8 @@ def convert_texts(texts, remove_stop=True, remove_punct=True):
         # Sometimes spacy doesn't handle punctuation well eg "work;life"
         # But completely removing all punctuation worsens score
         return [txt.replace(";", "; ") for txt in arr]
+
+    stops = set(nltk.corpus.stopwords.words("english"))
     
     tokens, lemmas = [], []
     for doc in nlp.pipe(prepreprocess(texts), disable=["ner", "tagger", "parser"]):
@@ -58,7 +61,9 @@ def convert_texts(texts, remove_stop=True, remove_punct=True):
         for token in doc:
             #print(token.text.lower())
             if not token.text.lower() in whitelist_words:  # These get waved through
-                if token.is_stop and remove_stop:
+                # if token.is_stop and remove_stop:
+                #     continue
+                if token.text in stops and remove_stop:
                     continue
                 if token.is_punct and remove_punct:
                     continue
