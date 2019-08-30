@@ -28,7 +28,7 @@ python textgraphs/run_ranking.py \
 --path_data={path_data} \
 ```
 
-## Colab
+## Notebooks
 For more details on the methods described in the paper, please refer to TextGraphs_Workshop_Code.ipynb
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mdda/worldtree_corpus/blob/textgraphs/TextGraphs_Workshop_Code.ipynb)
