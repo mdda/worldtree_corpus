@@ -1,6 +1,8 @@
 # worldtree_corpus
 Worldtree Corpus helper files, and sample solutions
 
+Note: To view our submission code for the EMNLP TextGraphs 2019 Workshop, please refer to the textgraphs [branch](https://github.com/mdda/worldtree_corpus/tree/textgraphs)
+
 The idea is to let you :
 
 ```
