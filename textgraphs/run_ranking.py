@@ -8,7 +8,8 @@ from scipy import stats
 from evaluate_with_role_breakdown import ListShouldBeEmptyWarning
 from preproc import get_questions, get_df_explanations
 from rank import get_ranks, get_preds, write_preds, run_scoring
-from rerank import make_score_data, preproc_trn_data, read_predict_txt, rerank_ranks, read_preds
+from rerank import (make_score_data, preproc_trn_data, read_predict_txt,
+                    rerank_ranks, read_preds)
 
 SEP = "#" * 100 + "\n"
 MODE_TRAIN = "train"
@@ -54,11 +55,8 @@ def process_qn(
     path_data: Path,
     df_exp: pd.DataFrame,
     use_recursive_tfidf: bool,
-    show_analysis: bool,
     bert_output_dir: str,
     mode: str,
-    plot_name: str = "",
-    do_rerank_by_role: bool = False,
     do_average_ranks: bool = True,
 ) -> None:
   print(SEP, f"Processsing {mode} data set")
@@ -70,12 +68,10 @@ def process_qn(
   if bert_output_dir == "":
     print(SEP, "BERT output dir not provided, running TFIDF-only methods")
     print(SEP, "Ranking")
-    ranks = get_ranks(
-        df,
-        df_exp,
-        use_embed=False,
-        use_recursive_tfidf=use_recursive_tfidf,
-    )
+    ranks = get_ranks(df,
+                      df_exp,
+                      use_embed=False,
+                      use_recursive_tfidf=use_recursive_tfidf)
     preds = get_preds(ranks, df, df_exp)
 
     print(SEP, "Writing predictions file")
@@ -90,7 +86,8 @@ def process_qn(
     print(SEP, "Scoring")
     with warnings.catch_warnings():
       warnings.filterwarnings("ignore", category=ListShouldBeEmptyWarning)
-      qid2score = run_scoring(path_q, path_predict)
+      _ = run_scoring(path_q, path_predict)
+
 
 def do_rerank(
     df: pd.DataFrame,
@@ -114,12 +111,8 @@ def do_rerank(
   return path_predict_rerank
 
 
-def prepare_rerank_data(
-    df: pd.DataFrame,
-    df_exp: pd.DataFrame,
-    ranks: list,
-    mode: str,
-) -> None:
+def prepare_rerank_data(df: pd.DataFrame, df_exp: pd.DataFrame, ranks: list,
+                        mode: str) -> None:
   path_df_scores = get_path_df_scores(mode)
 
   if mode == MODE_TRAIN:
@@ -136,30 +129,22 @@ def prepare_rerank_data(
 
 def main(
     path_data: str,
-    explanation_combos: bool = True,
     recurse_tfidf: bool = True,
     do_train: bool = True,
     do_dev: bool = True,
     do_test: bool = True,
     bert_output_dir: str = "",
-    show_analysis: bool = True,
-    plot_name: str = "",
-    do_rerank_by_role: bool = False,
     do_average_ranks: bool = True,
 ) -> None:
   """
   Runs main ranking pipeline, scoring and results analysis (BERT re-ranking not included)
   :param path_data: Normally is "worldtree_corpus_textgraphs2019sharedtask_withgraphvis"
-  :param explanation_combos: Explanations with combos eg man is human;male -> separate entries, MAP +0.01
   :param recurse_tfidf: Use iterative TFIDF algo, MAP +0.03
   :param do_train: Run on train set
   :param do_dev: Run on dev set
   :param do_test: Run on test set, no scoring or analysis will be run
-  :param show_analysis: Run analysis on results
   :param bert_output_dir: Cloud bucket path for BERT output model directory
-  :param do_rerank_by_role: Rebalance ranking to prioritize miniority role classes, MAP -0.03
   :param do_average_ranks: Average old and new ranks when reranking, MAP +0.01
-  :param plot_name: Unique identifier to save results dataframe .csv file
   :return: None
   """
   assert do_train or do_dev or do_test, "Can't do nothing!"
@@ -170,22 +155,15 @@ def main(
   print(SEP, "Preprocessing")
   with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=UserWarning)
-    df_exp = get_df_explanations(
-        path_tables,
-        explanation_combos,
-        path_data,
-    )
+    df_exp = get_df_explanations(path_tables, path_data)
 
   def _process_qn(mode: str) -> None:
     process_qn(
         path_data,
         df_exp,
         recurse_tfidf,
-        show_analysis,
         bert_output_dir,
-        mode=mode,
-        plot_name=plot_name,
-        do_rerank_by_role=do_rerank_by_role,
+        mode,
         do_average_ranks=do_average_ranks,
     )
 

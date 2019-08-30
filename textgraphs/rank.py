@@ -9,7 +9,7 @@ from scipy import sparse
 from sklearn import pipeline, feature_extraction, metrics
 from tqdm import tqdm
 
-import evaluate
+import evaluate_with_role_breakdown as evaluate
 from bm25 import BM25Transformer
 
 
@@ -317,36 +317,6 @@ def remove_combo_suffix(explanation_uid):
   return explanation_uid.split("_")[0]
 
 
-# def deduplicate_combos(ranks, df_exp):
-#   """
-#   Each combo (eg fans cool humans, fans cool rooms)
-#   has the same root uid but with a unique combo suffix (eg uid_0, uid_1)
-#   Now we must keep only the top ranked variant in the rankings
-#   Applying directly to rankings instead of to the preds is 3x faster
-#   """
-#   uids = df_exp.uid.apply(remove_combo_suffix)
-#   idx2uid = {idx: uid for idx, uid in enumerate(uids.tolist())}
-#
-#   # Canonicalize to original explanation indices
-#   df_exp_orig = df_exp[df_exp.uid.isin(set(uids))]
-#   uid2idx_canon = {
-#       uid: idx
-#       for idx, uid in zip(df_exp_orig.index, df_exp_orig.uid)
-#   }
-#
-#   def deduplicate(r):
-#     new = []
-#     seen = set()
-#     for idx in r:
-#       uid = idx2uid[idx]
-#       if uid not in seen:
-#         new.append(uid2idx_canon[uid])
-#         seen.add(uid)
-#     return np.asarray(new)
-#
-#   return [deduplicate(r) for r in tqdm(ranks)]
-
-
 def deduplicate_combos(ranks, df_exp):
   idx2idx_canon = get_idx2idx_canon(df_exp)
 
@@ -534,8 +504,8 @@ def write_preds(preds: list, path: str = "predict.txt") -> None:
 
 def test_write_preds():
   preds = [
-      'VASoL_2008_3_26\t14de-6699-6b2e-a5d1',
-      'VASoL_2008_3_26\t14de-6699-6b2e-a5d1'
+      "VASoL_2008_3_26\t14de-6699-6b2e-a5d1",
+      "VASoL_2008_3_26\t14de-6699-6b2e-a5d1",
   ]
   path = "temp.txt"
   write_preds(preds, path)
@@ -563,5 +533,5 @@ def run_scoring(path_gold: Path, path_predict: str = "predict.txt") -> dict:
       callback=_callback,
   )
   print("qid2score:", qid2score)
-  print('MAP: ', mean_ap)
+  print("MAP: ", mean_ap)
   return qid2score

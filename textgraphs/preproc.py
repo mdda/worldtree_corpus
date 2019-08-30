@@ -1,5 +1,4 @@
 import re
-import warnings
 from pathlib import Path
 
 import nltk
@@ -93,137 +92,12 @@ def preprocess_texts(
   return tokens, lemmas
 
 
-# # Spacy tokenizer
-# def preprocess_texts(
-#     texts: list,
-#     remove_stop: bool = True,
-#     remove_punct: bool = True,
-#     only_alpha: bool = True,
-#     path_data: Path = None,
-# ) -> (list, list):
-#   """
-#   Get tokens and lemmas from texts
-#   """
-#   def prepreprocess(_texts):
-#     """
-#     Sometimes spacy doesn't handle punctuation well eg "work;life"
-#     But completely removing all punctuation worsens score
-#     """
-#     return [text.replace(";", "; ").lower() for text in _texts]
-#
-#   # NLTK stopwords -> better MAP (see ranking/main)
-#   stops = set(nltk.corpus.stopwords.words("english"))
-#   # OTOH, NLTK WordNetLemmatizer is significantly less beneficial
-#
-#   texts = prepreprocess(texts)
-#
-#   default_lemmatizer = DefaultLemmatizer(path_data)
-#   texts = default_lemmatizer.transform(texts)
-#
-#   nlp = spacy.load("en_core_web_sm")
-#   tokens = []
-#   lemmas = []
-#   # Enabling spacy components is still fast but reduces MAP
-#   for doc in tqdm(nlp.pipe(texts, disable=["ner", "tagger", "parser"])):
-#     _tokens = []
-#     _lemmas = []
-#     for token in doc:
-#       if token.text in stops and remove_stop:
-#         # Better to disable tfidf stopwords and rely on this
-#         continue
-#       # if token.is_stop and remove_stop:
-#       #     # Disabling slightly helps TF-IDF which has its own stop list
-#       #     continue
-#       if token.is_punct and remove_punct:
-#         continue
-#       if token.is_space:
-#         continue  # Reduce useless nodes
-#       if not token.is_alpha and only_alpha:
-#         continue
-#       # Lowercase to reduce noise
-#       _tokens.append(token.text.lower())
-#       # _lemmas.append(token.lemma_.lower())
-#       _lemmas.append((default_lemmatizer.word2lemma.get(token.text)
-#                       or token.lemma_).lower())
-#     tokens.append(_tokens)
-#     lemmas.append(_lemmas)
-#
-#   return tokens, lemmas
-
-
 def test_preprocess_texts():
   print(
       preprocess_texts([
           "Which of these will most likely increase?",
           "Habitats support animals."
       ]))
-
-
-def read_explanations_with_permutations(path):
-  """
-  Some explanations contain "combos" (eg man is male;human;organism)
-  splitting them into (man is male, man is human, man is organism) is better
-  The uids of the combos are suffixed with their combo number (eg originaluid_1)
-  Improves score by ~1% but introduces significant code complexity
-  """
-  df = pd.read_csv(path, sep='\t')
-
-  header, uid_column = [], None
-  for name in df.columns:
-    if name.startswith('[SKIP]'):
-      if 'UID' in name and not uid_column:
-        uid_column = name  # This is the column header
-    else:
-      header.append(name)  # These are all those not market '[SKIP]'
-
-  if not uid_column or len(df) == 0:
-    warnings.warn('Possibly misformatted file: ' + path)
-    return []
-
-  def format_uid(uid_orig, idx_combo):
-    """
-    Currently the rest of the code heavily relies on one-to-one mapping
-    of uids, so duplicates are undesirable. For now add a unique suffix to
-    each combo's uid that can be easily resolved at evaluation time
-    """
-    assert "_" not in uid_orig
-    return f"{uid_orig}_{idx_combo}"
-
-  arr = []
-  for idx in df.index:
-    # Original entry
-    orig = ' '.join(
-        str(s) for s in list(df.iloc[idx][header]) if not pd.isna(s))
-    uid = df.at[idx, uid_column]
-    arr.append([uid, orig, []])
-
-    # Combo variants
-    cells, combos, combo_tot = dict(), [], 1
-    for h, v in zip(header, df.loc[idx][header]):
-      s = '' if pd.isna(v) else str(v)  # cast to string in case of numbers
-      options = [o.strip() for o in s.split(';')]
-      cells[h] = options
-      combos += [len(options)]
-      combo_tot *= len(
-          options)  # Count up the number of combos this contributes
-
-    for i in range(combo_tot):
-      # Go through all the columns, figuring out which combo we're on
-      combo, lemmas, residual = [], [], i
-      for j, h in enumerate(header):
-        # Find the relevant part for this specific combo
-        c = cells[h][residual % combos[j]]  # Works even if only 1 combo
-        if len(cells[h]) > 1:
-          lemmas.append(c)  # This is when there are choices
-        combo.append(c)
-        residual = residual // combos[j]  # TeeHee
-
-      arr.append([
-          format_uid(uid, i),  # uid
-          ' '.join([c for c in combo if len(c) > 0]),  # text for this combo
-          lemmas,
-      ])
-  return arr
 
 
 def exp_skip_dep(
@@ -269,7 +143,6 @@ def save_unique_phrases(path_exp: Path, save_temp: bool = True) -> str:
 
 def get_df_explanations(
     path_tables: str,
-    explanation_combos: bool,
     path_data: Path = None,
 ):
   """
@@ -281,11 +154,7 @@ def get_df_explanations(
     columns = ["uid", "text"]
     p = exp_skip_dep(p)
     # p = save_unique_phrases(Path(p))
-    if explanation_combos:
-      explanations += read_explanations_with_permutations(str(p))
-      columns.append("musthave")
-    else:
-      explanations += read_explanations(str(p))
+    explanations += read_explanations(str(p))
   df = pd.DataFrame(explanations, columns=columns)
   df = df.drop_duplicates("uid").reset_index(drop=True)  # 3 duplicate uids
   tokens, lemmas = preprocess_texts(df.text.tolist(), path_data=path_data)
