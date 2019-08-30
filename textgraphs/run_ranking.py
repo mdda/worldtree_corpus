@@ -57,7 +57,6 @@ def process_qn(
     use_recursive_tfidf: bool,
     bert_output_dir: str,
     mode: str,
-    do_average_ranks: bool = True,
 ) -> None:
   print(SEP, f"Processsing {mode} data set")
   uid2idx = {uid: idx for idx, uid in enumerate(df_exp.uid.tolist())}
@@ -79,8 +78,7 @@ def process_qn(
     prepare_rerank_data(df, df_exp, ranks, mode)
   else:
     print(SEP, "BERT output dir provided, running re-ranking pipeline")
-    path_predict = do_rerank(df, df_exp, bert_output_dir, mode,
-                             do_average_ranks)
+    path_predict = do_rerank(df, df_exp, bert_output_dir, mode)
 
   if mode in [MODE_TRAIN, MODE_DEV]:
     print(SEP, "Scoring")
@@ -94,7 +92,6 @@ def do_rerank(
     df_exp: pd.DataFrame,
     bert_output_dir: str,
     mode: str,
-    do_average_ranks: bool = True,
 ) -> str:
   path_predict = get_path_predict(mode)
   ranks = read_predict_txt(df, df_exp, path_predict)
@@ -104,7 +101,7 @@ def do_rerank(
   if mode != MODE_TEST:
     spearman = stats.spearmanr(df_scores.score, df_scores.pred)
     print("Spearman score:", spearman)
-  reranks = rerank_ranks(df, ranks, df_scores.pred.values, do_average_ranks)
+  reranks = rerank_ranks(df, ranks, df_scores.pred.values)
   path_predict_rerank = "rerank_" + path_predict
   write_preds(get_preds(reranks, df, df_exp), path_predict_rerank)
   print("Reranked predictions saved to:", path_predict_rerank)
@@ -134,7 +131,6 @@ def main(
     do_dev: bool = True,
     do_test: bool = True,
     bert_output_dir: str = "",
-    do_average_ranks: bool = True,
 ) -> None:
   """
   Runs main ranking pipeline, scoring and results analysis (BERT re-ranking not included)
@@ -144,7 +140,6 @@ def main(
   :param do_dev: Run on dev set
   :param do_test: Run on test set, no scoring or analysis will be run
   :param bert_output_dir: Cloud bucket path for BERT output model directory
-  :param do_average_ranks: Average old and new ranks when reranking, MAP +0.01
   :return: None
   """
   assert do_train or do_dev or do_test, "Can't do nothing!"
@@ -164,7 +159,6 @@ def main(
         recurse_tfidf,
         bert_output_dir,
         mode,
-        do_average_ranks=do_average_ranks,
     )
 
   if do_train:

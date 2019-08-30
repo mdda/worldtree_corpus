@@ -104,12 +104,10 @@ def rerank_ranks(
     df: pd.DataFrame,
     ranks: list,
     scores: np.ndarray,
-    do_average_ranks: bool = True,
 ) -> list:
   def copy(nested_list):
     return [list(lst) for lst in nested_list]
 
-  ranks_old = copy(ranks)
   ranks = copy(ranks)
   assert len(df) == len(ranks)
   scores = np.split(scores, len(df))
@@ -125,9 +123,6 @@ def rerank_ranks(
     ranks[i] = front_rerank + back
 
   ranks = [np.asarray(lst) for lst in ranks]  # back to orig dtypes
-
-  if do_average_ranks:
-    ranks = average_ranks(ranks_old, ranks)  # Extra 1% MAP by ensembling
   return ranks
 
 
