@@ -4,7 +4,7 @@
 
 **\*\*\*\*\* New August 31st, 2019: Code Release \*\*\*\*\***
 
-Released mplementation of the submission for the shared task of the EMNLP [TextGraphs 2019 Workshop](https://sites.google.com/view/textgraphs2019/home)
+Released mplementation of the submission for the shared task of the EMNLP [TextGraphs 2019 Workshop](https://sites.google.com/view/textgraphs2019/home).
 
 ## Introduction
 
@@ -29,10 +29,8 @@ python textgraphs/run_ranking.py \
 ```
 
 ## Colab
-For more details on the methods described in the paper, please refer to the notebook:
+For more details on the methods described in the paper, please refer to TextGraphs_Workshop_Code.ipynb
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mdda/worldtree_corpus/blob/textgraphs/TextGraphs_Workshop_Code.ipynb)
 
-To view the code for our original leaderboard submission, please refer to this other notebook: 
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mdda/worldtree_corpus/blob/textgraphs/TextGraphs_SharedTask_Submission.ipynb)
+To view the code for our original leaderboard submission, please refer to TextGraphs_SharedTask_Submission.ipynb
