@@ -4,7 +4,7 @@
 
 **\*\*\*\*\* New August 31st, 2019: Code Release \*\*\*\*\***
 
-Released mplementation of the submission for the shared task of the EMNLP [TextGraphs 2019 Workshop](https://sites.google.com/view/textgraphs2019/home).
+Released implementation of the submission for the shared task of the EMNLP [TextGraphs 2019 Workshop](https://sites.google.com/view/textgraphs2019/home).
 
 ## Introduction
 
