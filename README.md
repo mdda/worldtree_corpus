@@ -29,6 +29,10 @@ python textgraphs/run_ranking.py \
 ```
 
 ## Colab
-For more details, please refer to the notebook:
+For more details on the methods described in the paper, please refer to the notebook:
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mdda/worldtree_corpus/blob/textgraphs/TextGraphs_Workshop_Code.ipynb)
+
+To view the code for our original leaderboard submission, please refer to this other notebook: 
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mdda/worldtree_corpus/blob/textgraphs/TextGraphs_SharedTask_Submission.ipynb)
