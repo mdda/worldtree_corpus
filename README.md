@@ -2,6 +2,10 @@
 
 ### Multi-Hop Inference Explanation Regeneration 
 
+**\*\*\*\*\* New Oct 11th, 2019: Paper Release \*\*\*\*\***
+
+Released [system paper submission](https://github.com/mdda/worldtree_corpus/blob/textgraphs/EMNLP_TextGraphs.FINAL3.pdf) for EMNLP.
+
 **\*\*\*\*\* New August 31st, 2019: Code Release \*\*\*\*\***
 
 Released implementation of the submission for the shared task of the EMNLP [TextGraphs 2019 Workshop](https://sites.google.com/view/textgraphs2019/home).
