@@ -2,13 +2,17 @@
 
 ### Multi-Hop Inference Explanation Regeneration 
 
-**\*\*\*\*\* New Oct 11th, 2019: Paper Release \*\*\*\*\***
+**\*\*\*\*\* New Oct 11th, 2019: Paper & Slides Release \*\*\*\*\***
 
-Released [system paper submission](https://github.com/mdda/worldtree_corpus/blob/textgraphs/EMNLP_TextGraphs.FINAL3.pdf) for EMNLP.
+Attached [Google Slides presentation](https://docs.google.com/presentation/d/1_YB4M3PRQjGzL9ifAcOzDIEWOlsDgALNmS3aP1hEzE0/edit?usp=sharing) for [Tensorflow & Deep Learning SG Meetup](https://www.meetup.com/TensorFlow-and-Deep-Learning-Singapore/events/265374455/?_xtd=gqFyqTE5NTk2MTk3NqFwpmlwaG9uZQ&from=ref)
+
+Released [paper submission](https://github.com/mdda/worldtree_corpus/blob/textgraphs/EMNLP_TextGraphs.FINAL3.pdf) for EMNLP.
 
 **\*\*\*\*\* New August 31st, 2019: Code Release \*\*\*\*\***
 
-Released implementation of the submission for the shared task of the EMNLP [TextGraphs 2019 Workshop](https://sites.google.com/view/textgraphs2019/home).
+Released code implementation of the submission for the shared task of the EMNLP [TextGraphs 2019 Workshop](https://sites.google.com/view/textgraphs2019/home).
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mdda/worldtree_corpus/blob/textgraphs/TextGraphs_Workshop_Code.ipynb)
 
 ## Introduction
 
@@ -34,7 +38,5 @@ python textgraphs/run_ranking.py \
 
 ## Notebooks
 For more details on the methods described in the paper, please refer to TextGraphs_Workshop_Code.ipynb
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mdda/worldtree_corpus/blob/textgraphs/TextGraphs_Workshop_Code.ipynb)
 
 To view the code for our original leaderboard submission, please refer to TextGraphs_SharedTask_Submission.ipynb
