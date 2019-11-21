@@ -6,7 +6,7 @@
 
 Attached [Google Slides presentation](https://docs.google.com/presentation/d/1_YB4M3PRQjGzL9ifAcOzDIEWOlsDgALNmS3aP1hEzE0/edit?usp=sharing) for [Tensorflow & Deep Learning SG Meetup](https://www.meetup.com/TensorFlow-and-Deep-Learning-Singapore/events/265374455/?_xtd=gqFyqTE5NTk2MTk3NqFwpmlwaG9uZQ&from=ref)
 
-Released [paper submission](https://github.com/mdda/worldtree_corpus/blob/textgraphs/EMNLP_TextGraphs.FINAL3.pdf) for EMNLP.
+Released [conference paper submission](https://arxiv.org/abs/1911.08976) for EMNLP.
 
 **\*\*\*\*\* New August 31st, 2019: Code Release \*\*\*\*\***
 
@@ -16,7 +16,7 @@ Released code implementation of the submission for the shared task of the EMNLP 
 
 ## Introduction
 
-The TextGraphs-13 Shared Task on Explanation Regeneration asked participants to develop methods to reconstruct gold explanations for elementary science questions. The general task is multi-hop inference.
+The Explanation Regeneration shared task asked participants to develop methods to reconstruct gold explanations for elementary science questions (Clark et al., 2018), using a new corpus of gold explanations (Jansen et al., 2018) that provides supervision and instrumentation for this multi-hop inference task. Each explanation is represented as an “explanation graph”, a set of atomic facts (between 1 and 16 per explanation, drawn from a knowledge base of 5,000 facts) that, together, form a detailed explanation for the reasoning required to answer and explain the resoning behind a question. Linking these facts to achieve strong performance at rebuilding the gold explanation graphs requires methods to perform multi-hop inference - which has been shown to be far harder than inference of smaller numbers of hops (Jansen, 2018), particularly for the case here, where there is considerable uncertainty (at a lexical level) of how individual explanations logically link somewhat ‘fuzzy’ graph nodes.
 
 To give a few numbers, here are the results on the
 [TextGraphs WorkShop Shared Task Competition](https://competitions.codalab.org/competitions/20150):
