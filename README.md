@@ -6,7 +6,7 @@
 
 Attached [Google Slides presentation](https://docs.google.com/presentation/d/1_YB4M3PRQjGzL9ifAcOzDIEWOlsDgALNmS3aP1hEzE0/edit?usp=sharing) for [Tensorflow & Deep Learning SG Meetup](https://www.meetup.com/TensorFlow-and-Deep-Learning-Singapore/events/265374455/?_xtd=gqFyqTE5NTk2MTk3NqFwpmlwaG9uZQ&from=ref)
 
-Released [conference paper submission](https://arxiv.org/abs/1911.08976) for EMNLP.
+Released conference paper submission for EMNLP: [[arXiv](https://arxiv.org/abs/1911.08976), [ACL Anthology](https://www.aclweb.org/anthology/D19-5311/)]
 
 **\*\*\*\*\* New August 31st, 2019: Code Release \*\*\*\*\***
 
