@@ -1,0 +1,50 @@
+https://sites.google.com/view/textgraphs2020
+  http://cognitiveai.org/explanationbank/
+  https://github.com/cognitiveailab/tg2020task
+
+https://competitions.codalab.org/competitions/23615
+
+Important dates : 
+
+2020-03-06: Training data release
+2020-04-06: Test data release; Evaluation start
+# NOW
+2020-09-21: Evaluation end (specifically : Sept. 22, 2020, midnight UTC)
+2020-10-02: System description paper deadline
+2020-10-18: Deadline for reviews of system description papers
+2020-10-25: Author notifications
+2020-11-01: Camera-ready description paper deadline
+2020-12-13: TextGraphs-14 workshop
+
+To encourage transparency and replicability, all teams must publish their : 
+  code, 
+  tuning procedures, and 
+  instructions for running their models with their submission of shared task papers.
+
+(2020-09-02)
+#	Username	Score   
+1	alvysinger	0.5815
+2	webbley	    0.5809
+3	aisys	    0.5233
+
+
+cd worldtree_corpus
+# Get a copy of the desk reference here...
+wget http://cognitiveai.org/dist/worldtree_explanation_corpus_v2.1_book_desk_reference_draft.pdf
+
+git clone https://github.com/cognitiveailab/tg2020task.git
+cd tg2020task
+make dataset   # Downloads ~1Mb, and expands it out into the tables/*.tsv files, etc
+
+. ~/env38/bin/activate
+./baseline_tfidf.py tables questions.dev.tsv > predict.dev.txt   # <15secs
+./evaluate.py --gold questions.dev.tsv predict.dev.txt
+# > MAP:  0.2550229026109089
+
+./baseline_tfidf.py tables questions.train.tsv > predict.train.txt  # <45secs
+./evaluate.py --gold questions.train.tsv predict.train.txt
+# > MAP:  0.24691065411162139
+
+# Train = 2207 examples
+# Dev   =  496 examples
+# Test  = 1664 examples
