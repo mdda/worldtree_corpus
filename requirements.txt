@@ -1,0 +1,10 @@
+numpy
+pandas
+scikit-learn
+
+pydantic
+
+tqdm
+
+spacy
+torch

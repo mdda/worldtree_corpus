@@ -8,12 +8,12 @@ if [ ! -f "$PDF" ]; then
 fi
 
 TASK_REPO=tg2020task
-if [ ! -f "$TASK_REPO" ]; then
+if [ ! -d "$TASK_REPO" ]; then
     git clone https://github.com/cognitiveailab/${TASK_REPO}.git
 fi
 
 VENV=env3
-if [ ! -f "$VENV" ]; then
+if [ ! -d "$VENV" ]; then
     virtualenv --system-site-packages ${VENV}
 fi
 . env3/bin/activate

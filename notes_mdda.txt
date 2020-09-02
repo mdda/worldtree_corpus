@@ -48,5 +48,11 @@ git checkout -b textgraphs_2020 origin/textgraphs_2020
 
 ## ...
 
+*  Need a lemmatizer to correctly resolve all 'node words' in the explanations
+   *  Good resource : https://www.machinelearningplus.com/nlp/lemmatization-examples-python/
+   
+*  Can use this to identify nodes in Q&s 
+
+
 
 
