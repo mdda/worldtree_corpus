@@ -3,7 +3,9 @@ set -e
 
 . env3/bin/activate
 
-pushd tg2020task
+TASK_REPO=tg2020task
+
+pushd ${TASK_REPO}
     python3 baseline_tfidf.py tables questions.train.tsv > predict.train.txt  # <45secs
     python3 evaluate.py --gold questions.train.tsv predict.train.txt
     # > MAP:  0.24691065411162139

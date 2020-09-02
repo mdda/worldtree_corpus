@@ -8,7 +8,7 @@ if [ ! -f "$PDF" ]; then
 fi
 
 TASK_REPO=tg2020task
-if [ ! -f "$PDF" ]; then
+if [ ! -f "$TASK_REPO" ]; then
     git clone https://github.com/cognitiveailab/${TASK_REPO}.git
 fi
 
