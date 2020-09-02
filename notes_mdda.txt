@@ -28,7 +28,8 @@ To encourage transparency and replicability, all teams must publish their :
 3	aisys	    0.5233
 
 
-cd worldtree_corpus
+cd worldtree_corpus  # i.e. the REPO root directory
+
 # Get a copy of the desk reference here...
 wget http://cognitiveai.org/dist/worldtree_explanation_corpus_v2.1_book_desk_reference_draft.pdf
 

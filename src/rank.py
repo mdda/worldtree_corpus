@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from bm25 import BM25Vectorizer
 
-sys.path.append("..")
+sys.path.append("../tg2020task")
 
 import evaluate
 

@@ -50,7 +50,7 @@ def process_qn(
 
 
 def main(
-    path_data: str = "..",
+    path_data: str = "../tg2020task",
     recurse_tfidf: bool = True,
     do_train: bool = True,
     do_dev: bool = True,

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from torchvision.datasets.utils import download_and_extract_archive
 from tqdm import tqdm
 
-sys.path.append("..")
+sys.path.append("../tg2020task")
 np.random.seed(42)
 nltk.download("stopwords")
 
