@@ -38,11 +38,11 @@ def recurse_concat(
   Given a text, find the nearest n explanation vectors
   For each, exponentially de-scale and then perform maximum
       Recurse
-  default (maxlen=32, top_n=1, scale=2)  -> 0.457
-  (scale ** (len(seq) + 1)               -> -0.08
-  scale = 1.5 (default=2)                -> +0.05
-  scale = 1.25 (default=2)               -> +0.09
-  scale = 1.125 (default=2)              -> +0.07
+  default (maxlen=32, top_n=1, scale=2)  ->  0.457
+    (scale ** (len(seq) + 1)             -> -0.08
+    scale = 1.5 (default=2)              -> +0.05
+    scale = 1.25 (default=2)             -> +0.09
+    scale = 1.125 (default=2)            -> +0.07
   e = X_e[idx] / (len(seq) + 1)          -> +0.04
   maxlen=64, top_n=2                     -> +0.00
   """
@@ -139,7 +139,7 @@ def get_tfidf_ranking(
     e = maybe_concat_texts(df_exp[field_e].tolist())
 
     vec = {
-        "bm25": BM25Vectorizer(),
+        "bm25":  BM25Vectorizer(),
         "tfidf": feature_extraction.text.TfidfVectorizer(binary=True),
     }[mode]
 
@@ -172,6 +172,8 @@ def remove_duplicates(lst: list) -> list:
             new.append(item)
             seen.add(item)
     return new
+    # Or...
+    # return list(set(lst))
 
 
 def add_missing_idxs(old, idxs_sample):

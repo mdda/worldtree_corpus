@@ -9,8 +9,8 @@ from rank import get_ranks, get_preds, write_preds, run_scoring
 
 SEP = "#" * 100 + "\n"
 MODE_TRAIN = "train"
-MODE_DEV = "dev"
-MODE_TEST = "test"
+MODE_DEV   = "dev"
+MODE_TEST  = "test"
 
 
 def get_path_q(path_data: Path, mode: str) -> Path:
@@ -19,9 +19,9 @@ def get_path_q(path_data: Path, mode: str) -> Path:
 
 def get_path_predict(mode: str) -> str:
     f = {
-        MODE_TRAIN: "predict_trn.txt",
-        MODE_DEV: "predict_dev.txt",
-        MODE_TEST: "predict.txt",
+        MODE_TRAIN: "predict.train.txt",
+        MODE_DEV:   "predict.dev.txt",
+        MODE_TEST:  "predict.test.txt",
     }[mode]
     print(f"Mode: {mode}, predict file will be saved to: {f}")
     return f
