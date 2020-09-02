@@ -1,10 +1,11 @@
-https://sites.google.com/view/textgraphs2020
-  http://cognitiveai.org/explanationbank/
-  https://github.com/cognitiveailab/tg2020task
+*  https://sites.google.com/view/textgraphs2020
+  *  http://cognitiveai.org/explanationbank/
+  *  https://github.com/cognitiveailab/tg2020task
 
-https://competitions.codalab.org/competitions/23615
+*  https://competitions.codalab.org/competitions/23615
 
-Important dates : 
+
+## Important dates : 
 
 2020-03-06: Training data release
 2020-04-06: Test data release; Evaluation start
@@ -21,11 +22,20 @@ To encourage transparency and replicability, all teams must publish their :
   tuning procedures, and 
   instructions for running their models with their submission of shared task papers.
 
+*   Train = 2207 examples
+*   Dev   =  496 examples
+*   Test  = 1664 examples
+
+## Scores
+
 (2020-09-02)
-#	Username	Score   
+  Username	Score   
 1	alvysinger	0.5815
 2	webbley	    0.5809
 3	aisys	    0.5233
+
+
+## Installation
 
 git clone https://github.com/mdda/worldtree_corpus.git
 cd worldtree_corpus  # i.e. the REPO root directory
@@ -35,7 +45,8 @@ git checkout -b textgraphs_2020 origin/textgraphs_2020
 ./run_setup.bash
 ./run_baseline.bash
 
-# Train = 2207 examples
-# Dev   =  496 examples
-# Test  = 1664 examples
+
+## ...
+
+
 

@@ -20,3 +20,9 @@ pushd ${TASK_REPO}
 
     echo "Uploadable predictions file : ./${TASK_REPO}/predict.test.${METHOD}.zip"
 popd
+
+# Doing this directly from outer repo is simply:
+#
+# METHOD=rdai_method_1
+# python3 ${METHOD}.py ${TASK_REPO}/questions.test.tsv > predict.test.${METHOD}.txt
+# zip predict.test.${METHOD}.zip predict.test.${METHOD}.txt
