@@ -13,7 +13,7 @@ if [ ! -f "$PDF" ]; then
 fi
 
 VENV=env3
-if [ ! -f "$PDF" ]; then
+if [ ! -f "$VENV" ]; then
     virtualenv --system-site-packages ${VENV}
 fi
 . env3/bin/activate

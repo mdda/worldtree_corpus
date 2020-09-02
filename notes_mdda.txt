@@ -27,6 +27,11 @@ To encourage transparency and replicability, all teams must publish their :
 2	webbley	    0.5809
 3	aisys	    0.5233
 
+git clone https://github.com/mdda/worldtree_corpus.git
+cd worldtree_corpus
+#git branch -a
+git checkout -b textgraphs_2020 origin/textgraphs_2020
+
 
 cd worldtree_corpus  # i.e. the REPO root directory
 
