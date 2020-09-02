@@ -14,6 +14,9 @@ pushd ${TASK_REPO}
     python3 evaluate.py --gold questions.dev.tsv predict.dev.txt
     # > MAP:  0.2550229026109089
 
-    python3 baseline_tfidf.py tables questions.test.tsv > predict.txt
-    zip predict-tfidf-test.zip predict.txt
+    METHOD=baseline_tfidf
+    python3 ${METHOD}.py tables questions.test.tsv > predict.test.${METHOD}.txt
+    zip predict.test.${METHOD}.zip predict.test.${METHOD}.txt
+
+    echo "Uploadable predictions file : ./${TASK_REPO}/predict.test.${METHOD}.zip"
 popd

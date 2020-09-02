@@ -28,29 +28,14 @@ To encourage transparency and replicability, all teams must publish their :
 3	aisys	    0.5233
 
 git clone https://github.com/mdda/worldtree_corpus.git
-cd worldtree_corpus
+cd worldtree_corpus  # i.e. the REPO root directory
 #git branch -a
 git checkout -b textgraphs_2020 origin/textgraphs_2020
 
-
-cd worldtree_corpus  # i.e. the REPO root directory
-
-# Get a copy of the desk reference here...
-wget http://cognitiveai.org/dist/worldtree_explanation_corpus_v2.1_book_desk_reference_draft.pdf
-
-git clone https://github.com/cognitiveailab/tg2020task.git
-cd tg2020task
-make dataset   # Downloads ~1Mb, and expands it out into the tables/*.tsv files, etc
-
-. ~/env38/bin/activate
-./baseline_tfidf.py tables questions.dev.tsv > predict.dev.txt   # <15secs
-./evaluate.py --gold questions.dev.tsv predict.dev.txt
-# > MAP:  0.2550229026109089
-
-./baseline_tfidf.py tables questions.train.tsv > predict.train.txt  # <45secs
-./evaluate.py --gold questions.train.tsv predict.train.txt
-# > MAP:  0.24691065411162139
+./run_setup.bash
+./run_baseline.bash
 
 # Train = 2207 examples
 # Dev   =  496 examples
 # Test  = 1664 examples
+

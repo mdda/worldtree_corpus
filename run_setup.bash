@@ -22,5 +22,5 @@ pip3 install -r requirements.txt
 pip3 install -r ${TASK_REPO}/requirements.txt
 
 pushd ${TASK_REPO}
-    make dataset
+    make dataset   # Downloads ~1Mb, and expands it out into the tables/*.tsv files, etc
 popd
