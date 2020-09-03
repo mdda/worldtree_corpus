@@ -13,8 +13,7 @@ import numpy as np
 from tqdm import tqdm
 
 import spacy
-nlp = spacy.load("en_core_web_sm", disable=["ner", "parser", "deps"])  # "tagger", 
-
+nlp = spacy.load("en_core_web_sm", disable=["ner", "deps"])  # "tagger", "parser", 
 
 # Type-definitions
 UID=str
@@ -122,32 +121,95 @@ def read_explanation_file(path: str, table_name: str) -> List[Tuple[UID, Stateme
 
             # https://spacy.io/api/doc : Construct a doc word-by-word (preserves positions)
             # Potentially better : https://explosion.ai/blog/spacy-v2-pipelines-extensions
-            doc = spacy.tokens.Doc(nlp.vocab, words=tok_arr, ) # spaces=spaces defaults to all True
-            remove_stop=True
-            remove_punct=True
+            #doc = spacy.tokens.Doc(nlp.vocab, words=tok_arr, ) # spaces=spaces defaults to all True
+            
+            # Let's create the raw text we want to process, along with a char-array that
+            # tells us which 'cell' (i.e column) we're in
+            tok_txt = ' '.join(tok_arr)
+            char_idx_arr = [] # identifies the column that each character in raw_txt is in
+            for loc, tok in zip(loc_arr, tok_arr):
+                # Add a space (one surplus one at the end is not-a-problem)
+                #for _ in range(len(tok)+1): 
+                #    char_idx_arr.append(loc)
+                char_idx_arr.extend( [loc]*(len(tok)+1) )  # Slicker
+
+            tok_txt  = tok_txt.replace("single-celled", "singleXcelled")
+            # infrared NOUN
+            # two more more materials -> two or more materials
+
+            doc=nlp(tok_txt)
+            print(tok_txt)
+            #print(char_idx_arr)
+
+            # Plan : 
+            #   Get the list of tokens returned by doc, and pop them into respective columns
+            #   For each column, read the tokens backwards.
+            #      Starting at a Noun, accept NOUN, PROPN, or ADJ until none
+            #        Each group is a compound noun : form the actual one with the associated lemmas
+
+            token_arrays_at_columns = [ [] for _ in lex_arr ]
+            for i, token in enumerate(doc):
+                col_idx = char_idx_arr[ token.idx ]
+                print(f"{col_idx:2d} : {token.text.lower():<20s}, {token.lemma_.lower():<20s}, {token.pos_}")
+                token_arrays_at_columns[col_idx].append( token )
+
+            # This assumes that tokens is a consecutive list of tokens 
+            #   that spacy has processed from a doc
+            def get_compound_spans(tokens):
+                in_span, current_span, found_spans = False, [], []
+                for t in tokens[::-1]:  # Go backwards through the list
+                    pos = t.pos_
+                    if in_span:
+                        if pos in 'NOUN|PROPN|ADJ':
+                            current_span.insert(0, t)  # prepend what we found
+                        else:
+                            found_spans.append(current_span)
+                            in_span=False
+                    else:
+                        if pos in 'NOUN|PROPN|ADJ':  # |ADJ' is experimental
+                            in_span=True
+                            current_span = [t]
+                if in_span:  # We finished without 'closing the current_span'
+                    found_spans.append(current_span)
+                
+                compound_lemmas=[]
+                for span in found_spans:
+                    compound_lemmas.append( '_'.join(t.lemma_.lower().strip() for t in span) )
+
+                return compound_lemmas
+
+            for col_idx, tokens in enumerate(token_arrays_at_columns):
+                # Add the found spans, as lemmas, to the set of lemmas at this location
+                for compound_lemma in get_compound_spans(tokens):
+                    lex_arr[col_idx].add( compound_lemma )
 
             # So now go through the 'fields' 
             # - what we want is the 'nodes' associated with every column
-            for i, token in enumerate(doc):
-                #print(token.text.lower(), token.lemma_.lower())
-                if not token.text.lower() in whitelist_words:  # These get waved through
-                    if token.is_stop and remove_stop:
-                        continue
-                    if token.is_punct and remove_punct:
-                        continue
-                    if len(token.lemma_.strip())==0:
-                        continue # Kill spaces
-                # Ok, so this is potentially useful as a 'node'
-                col_idx = loc_arr[i]
-                if header_skip[col_idx] or header_fill[col_idx]:
-                    pass
-                else:
-                    # Add this lemma to the set of lemmas at this location?
-                    lex_arr[col_idx].add( token.lemma_.strip() )
+            #remove_stop=True
+            #remove_punct=True
+            #for i, token in enumerate(doc):
+            #    col_idx = char_idx_arr[ token.idx ]
+            #    print(f"{col_idx:2d} : {token.text.lower():<20s}, {token.lemma_.lower():<20s}, {token.pos_}")
+            #    if not token.text.lower() in whitelist_words:  # These get waved through
+            #        if token.is_stop and remove_stop:
+            #            continue
+            #        if token.is_punct and remove_punct:
+            #            continue
+            #        if len(token.lemma_.strip())==0:
+            #            continue # Kill spaces
+            #    # Ok, so this is potentially useful as a 'node'
+            #    #col_idx = loc_arr[i]
+            #    if header_skip[col_idx] or header_fill[col_idx]:
+            #        pass
+            #    else:
+            #        # Add this lemma to the set of lemmas at this location?
+            #        lex_arr[col_idx].add( token.lemma_.strip() )
 
                 #_tokens.append(token.text)
                 #_lemmas.append(token.lemma_.lower())  
             print("lex_arr", lex_arr)
+
+            #if 'dioxide' in tok_txt: exit(0)
 
             uid = row[uid_col]
             s = Statement(
@@ -169,3 +231,29 @@ if '__main__' == __name__:
     ex_file=os.path.join('../tg2020task/tables', f'{table}.tsv')
     explanations = read_explanation_file(ex_file, table)
     #print(explanations)
+
+    # TODO:
+    """
+    Noun phrases into compound words...
+    Separate commas out in lists in cells
+    Think about the word 'and' in lists in cells
+
+    class TxtAndNodes
+        txt: str
+        nodes: []
+
+    class QuestionAnswer 
+        question: TxtAndNodes
+        answer  : TxtAndNodes
+        wrong   : List[TxtAndNodes]
+
+        explanation_gold: []
+        question_statements: [] # Becomes part of initial explanation
+
+    qa_raw = QuestionAnswer()
+    qa_enh = qa_raw
+    qa_enh = MoveStatmentsFromQuestion(qa_enh)
+    qa_enh = MoveAssumptionsFromQuestionToAnswer(qa_enh)
+    qa_enh = ResolveExplanationsToSpecifics(qa_enh)
+
+    """
