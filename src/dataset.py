@@ -36,7 +36,7 @@ see move
 """.strip().lower().split()
 
 
-def read_explanation_file(path: str, table_name: str) -> List[Tuple[UID, Statement]]:
+def read_explanation_file(path: str, table_name: str) -> List[Statement]:
     header, fields, rows, uid_col = [], dict(), [], None
 
     with open(path, 'rt') as fd:
@@ -214,7 +214,7 @@ def read_explanation_file(path: str, table_name: str) -> List[Tuple[UID, Stateme
             uid = row[uid_col]
             s = Statement(
                 uid_base= uid,
-                uid     = uid if n_combos==1 else f"{uid}_{combo_idx}",
+                uid     = f"{uid}_{combo_idx}" if n_combos>1 else uid,
                 table   = table_name, 
                 raw_txt = raw_txt,
             )
@@ -234,9 +234,9 @@ if '__main__' == __name__:
 
     # TODO:
     """
-    Noun phrases into compound words...
-    Separate commas out in lists in cells
-    Think about the word 'and' in lists in cells
+    DONE : Noun phrases into compound words...   (~works)
+    DONE : Separate commas out in lists in cells (works)
+    DONE : Think about the word 'and' in lists in cells (works)
 
     class TxtAndNodes
         txt: str
