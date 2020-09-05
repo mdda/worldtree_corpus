@@ -289,11 +289,20 @@ if '__main__' == __name__:
     DONE : Noun phrases into compound words =Keywords (~works)
     DONE : Separate commas out in lists in cells (works)
     DONE : Think about the word 'and' in lists in cells (works)
+    Look for badly hyphenated word '-' and fix  (exceptions file into repo)
+    Look for badly transferred keywords ({'red_light'} should be {'red', 'light'}) and fix (exceptions file into repo)
+
+    Do keywords and other basic preproc on Q&A datasets
+    Do some of the fancier preproc ideas on Q&A datasets
 
     qa_raw = QuestionAnswer()
     qa_enh = qa_raw
     qa_enh = MoveStatmentsFromQuestion(qa_enh)
     qa_enh = MoveAssumptionsFromQuestionToAnswer(qa_enh)
     qa_enh = ResolveExplanationsToSpecifics(qa_enh)
+
+    Make basic graph from Keyword interconnects of Statements
+    Find shortest path from Q->A via https://en.wikipedia.org/wiki/Dijkstra's_algorithm
+    
 
     """
