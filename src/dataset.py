@@ -29,6 +29,19 @@ class Statement(BaseModel):
     keyword_arr: List[Keywords]
     keywords: Keywords
 
+class TxtAndKeywords(BaseModel):
+    txt: str
+    keywords: List[Keywords]
+
+class QuestionAnswer(BaseModel):
+    question: TxtAndKeywords
+    answer  : TxtAndKeywords
+    wrong   : List[TxtAndKeywords]
+
+    explanation_gold: List[Statement] = []
+    # Becomes part of initial explanation :
+    question_statements: List[Statement] = [] 
+
 
 
 # Hard-coded whitelist (!)
@@ -141,13 +154,6 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
                     loc_arr.extend(locs)
 
             raw_txt = ' '.join( txt_arr )
-            if True:
-                print()
-                print("txt_arr : "+(' | '.join( txt_arr )))
-                #raw_tok = ' | '.join( tok_arr )
-                #print("raw_tok : "+raw_tok)  # looks fine
-                #raw_loc = ' | '.join( str(i) for i in loc_arr )
-                #print("raw_loc : "+raw_loc)  # looks fine
 
             # https://spacy.io/api/doc : Construct a doc word-by-word (preserves positions)
             # Potentially better : https://explosion.ai/blog/spacy-v2-pipelines-extensions
@@ -168,14 +174,23 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
             # two more more materials -> two or more materials
 
             doc=nlp(tok_txt)
-            print(tok_txt)
-            #print(char_idx_arr)
+
+            if True:
+                print()
+                print("txt_arr : "+(' | '.join( txt_arr )))
+                #raw_tok = ' | '.join( tok_arr )
+                #print("raw_tok : "+raw_tok)  # looks fine
+                #raw_loc = ' | '.join( str(i) for i in loc_arr )
+                #print("raw_loc : "+raw_loc)  # looks fine
+                #print(char_idx_arr)
+                print(tok_txt)
 
             # Plan : 
             #   Get the list of tokens returned by doc, and pop them into respective columns
             #   For each column, read the tokens backwards.
             #      Starting at a Noun, accept NOUN, PROPN, or ADJ until none
-            #        Each group is a compound noun : form the actual one with the associated lemmas
+            #        Each group is a compound noun (==Keyword) 
+            #        : form the actual one with the associated lemmas
 
             token_arrays_at_columns = [ [] for _ in keyword_arr ]
             for i, token in enumerate(doc):
@@ -185,7 +200,7 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
 
             for col_idx, tokens in enumerate(token_arrays_at_columns):
                 # Add the found spans, converted to keywords, 
-                #   to the set of lemmas at this location
+                #   to the set of keywords at this location
                 for keyword in extract_keywords(tokens):
                     keyword_arr[col_idx].add( keyword )
             print("keyword_arr", keyword_arr)
@@ -207,6 +222,7 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
             )
             statements.append(s)
             #print()
+            if 'singleXcelled' in raw_txt: exit(0)
             
 
         if i>50: break
@@ -224,18 +240,6 @@ if '__main__' == __name__:
     DONE : Noun phrases into compound words...   (~works)
     DONE : Separate commas out in lists in cells (works)
     DONE : Think about the word 'and' in lists in cells (works)
-
-    class TxtAndNodes
-        txt: str
-        nodes: []
-
-    class QuestionAnswer 
-        question: TxtAndNodes
-        answer  : TxtAndNodes
-        wrong   : List[TxtAndNodes]
-
-        explanation_gold: []
-        question_statements: [] # Becomes part of initial explanation
 
     qa_raw = QuestionAnswer()
     qa_enh = qa_raw
