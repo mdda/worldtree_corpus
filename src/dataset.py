@@ -4,7 +4,7 @@ import warnings
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Tuple, Set
 
-import csv
+import csv, json
 import numpy as np
 #import pandas as pd
 
@@ -24,9 +24,12 @@ class Statement(BaseModel):
     uid:     UID
     table:   str
 
-    raw_txt: str
-    tok_arr: List[str]
+    hdr_arr: List[str]
+    txt_arr: List[str]
+    #tok_arr: List[str]
     keyword_arr: List[Keywords]
+
+    raw_txt: str
     keywords: Keywords
 
 class TxtAndKeywords(BaseModel):
@@ -45,7 +48,7 @@ class QuestionAnswer(BaseModel):
 
 
 # Hard-coded whitelist (!)
-whitelist_words="""
+UNUSED_whitelist_words="""
 most least much few
 all nothing 
 full empty
@@ -56,7 +59,7 @@ see move
 
 # This assumes that tokens is a consecutive list of tokens 
 #   that spacy has processed from a doc
-def extract_keywords(spacy_tokens):
+def extract_keywords(spacy_tokens) -> Keywords:
     in_span, current_span, found_spans = False, [], []
     for t in spacy_tokens[::-1]:  # Go backwards through the list
         pos = t.pos_
@@ -73,10 +76,12 @@ def extract_keywords(spacy_tokens):
     if in_span:  # We finished without 'closing the current_span'
         found_spans.append(current_span)
     
-    keywords=[]
+    #keywords=[]
+    #for span in found_spans:
+    #    keywords.append( '_'.join(t.lemma_.lower().strip() for t in span) )
+    keywords=set()
     for span in found_spans:
-        keywords.append( '_'.join(t.lemma_.lower().strip() for t in span) )
-
+        keywords.add( '_'.join(t.lemma_.lower().strip() for t in span) )
     return keywords
 
 def read_explanation_file(path: str, table_name: str) -> List[Statement]:
@@ -109,11 +114,11 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
         return []
 
     statements=[]
-    for i, row in enumerate(rows):
+    for row_i, row in enumerate(rows):
         #print(header_skip)
         #print(header_fill)
         # Convert this single row into the combo rows
-        combo_row = [ ([''] if header_skip[i] else cell.split(';')) for i, cell in enumerate(row) ]
+        combo_row = [ ([''] if header_skip[col_i] else cell.split(';')) for col_i, cell in enumerate(row) ]
         #print( combo_row )
         n_combos = np.prod([len(combo) for combo in combo_row])
 
@@ -139,21 +144,23 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
         # Ok, so now have the expanded list of combos for this line
         for combo_idx, combo_row in enumerate(combos):
             txt_arr, keyword_arr = [], []  # Store the actual text in each relevant column
-            loc_arr, tok_arr = [], []
-            for i,s in enumerate(combo_row):
+            hdr_arr, loc_arr, tok_arr = [], [], []
+            for col_i,s in enumerate(combo_row):
                 txt  = s.strip()
-                if header_skip[i]: txt=''
+                if header_skip[col_i]: txt=''
                 txt_arr.append(txt)
                 keyword_arr.append( set() )
 
+                hdr_arr.append('' if header_fill[col_i] else header[col_i])
                 if len(txt)>0:
                     toks = txt.split(' ')
-                    locs = [i]*len(toks)
+                    locs = [col_i]*len(toks)
 
                     tok_arr.extend(toks)
                     loc_arr.extend(locs)
 
-            raw_txt = ' '.join( txt_arr )
+            #raw_txt = ' '.join( txt_arr )
+            raw_txt = ' '.join( t for t in txt_arr if len(t)>0 )
 
             # https://spacy.io/api/doc : Construct a doc word-by-word (preserves positions)
             # Potentially better : https://explosion.ai/blog/spacy-v2-pipelines-extensions
@@ -169,7 +176,13 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
                 #    char_idx_arr.append(loc)
                 char_idx_arr.extend( [loc]*(len(tok)+1) )  # Slicker
 
-            tok_txt  = tok_txt.replace("single-celled", "singleXcelled")
+            # Don't change the number of characters!
+            #tok_txt  = tok_txt.replace("single-celled", "singleXcelled")
+            tok_txt  = tok_txt.replace("single-celled", "single+celled") # Works
+            #tok_txt  = tok_txt.replace("single_celled", "singlecelled") # NOPE
+            tok_txt  = tok_txt.replace("six-sided", "six+sided") # Works
+            tok_txt  = tok_txt.replace("face-centered", "face+centered") # Works
+            
             # infrared NOUN
             # two more more materials -> two or more materials
 
@@ -193,16 +206,17 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
             #        : form the actual one with the associated lemmas
 
             token_arrays_at_columns = [ [] for _ in keyword_arr ]
-            for i, token in enumerate(doc):
+            for tok_i, token in enumerate(doc):
                 col_idx = char_idx_arr[ token.idx ]
                 print(f"{col_idx:2d} : {token.text.lower():<20s}, {token.lemma_.lower():<20s}, {token.pos_}")
                 token_arrays_at_columns[col_idx].append( token )
 
             for col_idx, tokens in enumerate(token_arrays_at_columns):
+                if header_fill[col_idx]: continue  # no keywords in [FILL] columns
                 # Add the found spans, converted to keywords, 
                 #   to the set of keywords at this location
-                for keyword in extract_keywords(tokens):
-                    keyword_arr[col_idx].add( keyword )
+                keywords = extract_keywords(tokens)
+                keyword_arr[col_idx].update( keywords )
             print("keyword_arr", keyword_arr)
 
             #for s in keyword_arr:
@@ -215,29 +229,64 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
                 uid     = f"{uid}_{combo_idx}" if n_combos>1 else uid,
                 table   = table_name, 
 
-                raw_txt = raw_txt,
-                tok_arr = tok_arr,
+                hdr_arr = hdr_arr,
+                txt_arr = txt_arr,
+                #tok_arr = tok_arr,
                 keyword_arr = keyword_arr,
+
+                raw_txt = raw_txt,
                 keywords = set.union(*keyword_arr),
             )
             statements.append(s)
             #print()
-            if 'singleXcelled' in raw_txt: exit(0)
-            
+            #if 'singleXcelled' in raw_txt: exit(0)
+            #if 'single+celled' in raw_txt: exit(0)
+            #if 'single' in raw_txt: exit(0)
 
-        if i>50: break
+        #if row_i>5: break
     return statements
 
 if '__main__' == __name__:
-    #os.path.join(path, file)
-    table='MADEOF'
-    ex_file=os.path.join('../tg2020task/tables', f'{table}.tsv')
-    explanations = read_explanation_file(ex_file, table)
-    #print(explanations)
+    TASK_BASE = '../tg2020task'
+    RDAI_BASE = '../'
 
-    # TODO:
+    statements_file = os.path.join(RDAI_BASE, 'statements.jsonl')
+
+    if not os.path.isfile(statements_file):
+        with open(os.path.join(TASK_BASE, 'tableindex.txt'), 'rt') as index:
+            tables = [l.replace('.tsv', '').strip() for l in index.readlines()]
+
+        statements_all=[]
+        for table in tables:
+            #table='MADEOF'
+            ex_file=os.path.join(TASK_BASE, 'tables', f'{table}.tsv')
+            statements = read_explanation_file(ex_file, table)
+            statements_all.extend( statements )
+        
+        #print(explanations)
+        #print(statements[12].json())
+
+        # Generates an 8Mb file 
+        with open(statements_file, 'wt') as f:
+            for s in statements_all:
+                f.write( s.json() )
+                f.write('\n')
+
+    # Now load in the statements file
+    statements = []
+    with open(statements_file, 'rt') as f:
+        for l in f.readlines():
+            #print(json.loads(l))
+            s = Statement.parse_raw( l )
+            statements.append( s )
+
+
+    #print(len(statements))  # 13K in total (includes COMBOs)
+    #print(statements[123])
+
     """
-    DONE : Noun phrases into compound words...   (~works)
+    # TODO:
+    DONE : Noun phrases into compound words =Keywords (~works)
     DONE : Separate commas out in lists in cells (works)
     DONE : Think about the word 'and' in lists in cells (works)
 
