@@ -2,7 +2,7 @@ import os
 import warnings
 
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Set
 
 import csv
 import numpy as np
@@ -17,12 +17,18 @@ nlp = spacy.load("en_core_web_sm", disable=["ner", "deps"])  # "tagger", "parser
 
 # Type-definitions
 UID=str
+Keywords=Set[str]
 
 class Statement(BaseModel):
     uid_base:UID
     uid:     UID
     table:   str
+
     raw_txt: str
+    tok_arr: List[str]
+    keyword_arr: List[Keywords]
+    keywords: Keywords
+
 
 
 # Hard-coded whitelist (!)
@@ -35,6 +41,30 @@ front back
 see move
 """.strip().lower().split()
 
+# This assumes that tokens is a consecutive list of tokens 
+#   that spacy has processed from a doc
+def extract_keywords(spacy_tokens):
+    in_span, current_span, found_spans = False, [], []
+    for t in spacy_tokens[::-1]:  # Go backwards through the list
+        pos = t.pos_
+        if in_span:
+            if pos in 'NOUN|PROPN|ADJ':
+                current_span.insert(0, t)  # prepend what we found
+            else:
+                found_spans.append(current_span)
+                in_span=False
+        else:
+            if pos in 'NOUN|PROPN|ADJ':  # |ADJ' is experimental
+                in_span=True
+                current_span = [t]
+    if in_span:  # We finished without 'closing the current_span'
+        found_spans.append(current_span)
+    
+    keywords=[]
+    for span in found_spans:
+        keywords.append( '_'.join(t.lemma_.lower().strip() for t in span) )
+
+    return keywords
 
 def read_explanation_file(path: str, table_name: str) -> List[Statement]:
     header, fields, rows, uid_col = [], dict(), [], None
@@ -95,13 +125,13 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
 
         # Ok, so now have the expanded list of combos for this line
         for combo_idx, combo_row in enumerate(combos):
-            txt_arr, lex_arr = [], []  # Store the actual text in each relevant column
+            txt_arr, keyword_arr = [], []  # Store the actual text in each relevant column
             loc_arr, tok_arr = [], []
             for i,s in enumerate(combo_row):
                 txt  = s.strip()
                 if header_skip[i]: txt=''
                 txt_arr.append(txt)
-                lex_arr.append( set() )
+                keyword_arr.append( set() )
 
                 if len(txt)>0:
                     toks = txt.split(' ')
@@ -147,76 +177,33 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
             #      Starting at a Noun, accept NOUN, PROPN, or ADJ until none
             #        Each group is a compound noun : form the actual one with the associated lemmas
 
-            token_arrays_at_columns = [ [] for _ in lex_arr ]
+            token_arrays_at_columns = [ [] for _ in keyword_arr ]
             for i, token in enumerate(doc):
                 col_idx = char_idx_arr[ token.idx ]
                 print(f"{col_idx:2d} : {token.text.lower():<20s}, {token.lemma_.lower():<20s}, {token.pos_}")
                 token_arrays_at_columns[col_idx].append( token )
 
-            # This assumes that tokens is a consecutive list of tokens 
-            #   that spacy has processed from a doc
-            def get_compound_spans(tokens):
-                in_span, current_span, found_spans = False, [], []
-                for t in tokens[::-1]:  # Go backwards through the list
-                    pos = t.pos_
-                    if in_span:
-                        if pos in 'NOUN|PROPN|ADJ':
-                            current_span.insert(0, t)  # prepend what we found
-                        else:
-                            found_spans.append(current_span)
-                            in_span=False
-                    else:
-                        if pos in 'NOUN|PROPN|ADJ':  # |ADJ' is experimental
-                            in_span=True
-                            current_span = [t]
-                if in_span:  # We finished without 'closing the current_span'
-                    found_spans.append(current_span)
-                
-                compound_lemmas=[]
-                for span in found_spans:
-                    compound_lemmas.append( '_'.join(t.lemma_.lower().strip() for t in span) )
-
-                return compound_lemmas
-
             for col_idx, tokens in enumerate(token_arrays_at_columns):
-                # Add the found spans, as lemmas, to the set of lemmas at this location
-                for compound_lemma in get_compound_spans(tokens):
-                    lex_arr[col_idx].add( compound_lemma )
+                # Add the found spans, converted to keywords, 
+                #   to the set of lemmas at this location
+                for keyword in extract_keywords(tokens):
+                    keyword_arr[col_idx].add( keyword )
+            print("keyword_arr", keyword_arr)
 
-            # So now go through the 'fields' 
-            # - what we want is the 'nodes' associated with every column
-            #remove_stop=True
-            #remove_punct=True
-            #for i, token in enumerate(doc):
-            #    col_idx = char_idx_arr[ token.idx ]
-            #    print(f"{col_idx:2d} : {token.text.lower():<20s}, {token.lemma_.lower():<20s}, {token.pos_}")
-            #    if not token.text.lower() in whitelist_words:  # These get waved through
-            #        if token.is_stop and remove_stop:
-            #            continue
-            #        if token.is_punct and remove_punct:
-            #            continue
-            #        if len(token.lemma_.strip())==0:
-            #            continue # Kill spaces
-            #    # Ok, so this is potentially useful as a 'node'
-            #    #col_idx = loc_arr[i]
-            #    if header_skip[col_idx] or header_fill[col_idx]:
-            #        pass
-            #    else:
-            #        # Add this lemma to the set of lemmas at this location?
-            #        lex_arr[col_idx].add( token.lemma_.strip() )
-
-                #_tokens.append(token.text)
-                #_lemmas.append(token.lemma_.lower())  
-            print("lex_arr", lex_arr)
-
-            #if 'dioxide' in tok_txt: exit(0)
+            #for s in keyword_arr:
+            #    print(list(s))
+            #print(set.union(*keyword_arr))
 
             uid = row[uid_col]
             s = Statement(
                 uid_base= uid,
                 uid     = f"{uid}_{combo_idx}" if n_combos>1 else uid,
                 table   = table_name, 
+
                 raw_txt = raw_txt,
+                tok_arr = tok_arr,
+                keyword_arr = keyword_arr,
+                keywords = set.union(*keyword_arr),
             )
             statements.append(s)
             #print()
