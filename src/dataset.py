@@ -61,6 +61,60 @@ front back
 see move
 """.strip().lower().split()
 
+hyphenations=None
+def fix_hyphenations(txt):
+    global hyphenations
+
+    hyphenated = re.findall(r'\w+\-[\w\-]+', txt)
+    if len(hyphenated)==0:
+        return txt # Leave quickly
+
+    # Read and cache the hyphenations.csv file
+    if hyphenations is None:
+        hyphenations=dict()
+        with open(os.path.join(RDAI_BASE, 'hyphenations.csv')) as f:
+            for l in f.readlines():
+                l=l.strip()
+                if len(l)==0 or l.startswith('#'):
+                    continue
+                hyphenations[l] = l.replace('-', '+')
+
+    for h in hyphenated:
+        print(f"DEBUG:hyphenated:{h.strip()}:{txt.strip()}")
+        # Mutating value of txt : Oh No!
+        txt = txt.replace(h, hyphenations.get(h, h))
+    return txt    
+
+keyword_relabel=None  # Will be a dictionary map to sets of replacement kewords
+def fix_keyword_set(kws):
+    global keyword_relabel
+
+    # Read and cache the keyword_relabel.txt file
+    if keyword_relabel is None:
+        keyword_relabel=dict()
+        with open(os.path.join(RDAI_BASE, 'keyword_relabel.txt')) as f:
+            for l in f.readlines():
+                l=l.strip()
+                if len(l)==0 or l.startswith('#'):
+                    continue
+                kw_from, kw_to = l.split(':')
+                for kw_old in kw_from.split(','):
+                    for kw_new in kw_to.split(','):
+                        if not kw_old in keyword_relabel:
+                            keyword_relabel[kw_old]=set()
+                        keyword_relabel[kw_old].add(kw_new)
+
+    # jq -c .raw_txt,.keywords data/statements.jsonl | grep -A0 -B1 'chemical_bond_energy'
+    kw_replaced=set()
+    for kw in kws:
+        if kw in keyword_relabel:
+            print(f"DEBUG:keyword_replace:{kw}->{keyword_relabel[kw]}")
+            kw_replaced.update(keyword_relabel[kw]) # This is a set of replacements
+        else:
+            # This just copies the old value across
+            kw_replaced.add(kw)
+    return kw_replaced
+
 # This assumes that tokens is a consecutive list of tokens 
 #   that spacy has processed from a doc
 def extract_keywords(spacy_tokens, require_keywords=True) -> Keywords:
@@ -96,32 +150,10 @@ def extract_keywords(spacy_tokens, require_keywords=True) -> Keywords:
     #    keywords.append( '_'.join(t.lemma_.lower().strip() for t in span) )
     keywords=set()
     for span in found_spans:
-        keywords.add( '_'.join(t.lemma_.lower().strip() for t in span) )
-    return keywords
+        keyword = '_'.join(t.lemma_.lower().strip() for t in span)
+        keywords.add( keyword )
+    return fix_keyword_set(keywords)
 
-hyphenations=None
-def fix_hyphenations(txt):
-    global hyphenations
-
-    hyphenated = re.findall(r'\w+\-[\w\-]+', txt)
-    if len(hyphenated)==0:
-        return txt # Leave quickly
-
-    # Read and cache the hyphenations.csv file
-    if hyphenations is None:
-        hyphenations=dict()
-        with open(os.path.join(RDAI_BASE, 'hyphenations.csv')) as f:
-            for l in f.readlines():
-                l=l.strip()
-                if len(l)==0 or l.startswith('#'):
-                    continue
-                hyphenations[l] = l.replace('-', '+')
-
-    for h in hyphenated:
-        print(f"DEBUG:hyphenated:{h.strip()}:{txt.strip()}")
-        # Mutating value of txt : Oh No!
-        txt = txt.replace(h, hyphenations.get(h, h))
-    return txt    
 
 def read_explanation_file(path: str, table_name: str) -> List[Statement]:
     header, fields, rows, uid_col = [], dict(), [], None

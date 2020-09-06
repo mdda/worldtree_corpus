@@ -83,8 +83,11 @@ trade-off
 tree-growth
 tube-like
 twenty-three
+
+# This means uranium -> lead, so should be separated
+#uranium-lead
+
 U-shaped
-uranium-lead
 V-shaped
 warm-blooded
 warm-weather

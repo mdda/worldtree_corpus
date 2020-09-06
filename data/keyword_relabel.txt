@@ -1,0 +1,38 @@
+# Syntax : 
+# old_keyword_option1,old_keyword_option2:becomes_1,becomes_2
+# Comments start with #
+# eg:
+# # split a silly composite
+# young_bird:young,bird  
+# # bad spelling, silly composite
+# yellow+dwaf_star,yellow_dwarf_star:yellow_dwarf,star
+
+
+young_bird:young,bird
+yellow+dwaf_star,yellow_dwarf_star:yellow_dwarf,star
+
+# Just chasing down 'star'
+stellar_formation:stellar,formation
+star_life_cycle:star,life_cycle
+formation_stage:formation,stage
+main+sequence_star,main+sequences_star:main_sequence_star
+
+warm+blooded_animal:warm+blooded,animal
+warm+bloode:warm+blooded
+vertebrate_animal:vertebrate,animal
+tay+sachs_disease:tay+sachs,disease
+cloudy_condition:cloudy,condition
+chemical_bond_energy:chemical_bond,energy
+red_light:red,light
+violet_light:violet,light
+x_ray:x+ray
+major_yearly_temperature_change:major,yearly,temperature_change
+male_animal:male,animal
+
+# Should have been in spacy lemmatisation anyway
+writing:write
+volcanic_eruptions:volcanic_eruption
+vertical_axi:vertical_axis
+chlorine(cl:chlorine,cl
+extremely:extreme
+dissolving_limestone:dissolving,limestone
