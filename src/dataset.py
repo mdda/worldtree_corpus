@@ -59,7 +59,7 @@ see move
 
 # This assumes that tokens is a consecutive list of tokens 
 #   that spacy has processed from a doc
-def extract_keywords(spacy_tokens) -> Keywords:
+def extract_keywords(spacy_tokens, require_keywords=True) -> Keywords:
     in_span, current_span, found_spans = False, [], []
     for t in spacy_tokens[::-1]:  # Go backwards through the list
         pos = t.pos_
@@ -76,6 +76,17 @@ def extract_keywords(spacy_tokens) -> Keywords:
     if in_span:  # We finished without 'closing the current_span'
         found_spans.append(current_span)
     
+    if len(found_spans)==0 and require_keywords:
+        # Be a bit looser... Take the VERB if any
+        priority=['VERB', 'ADV']
+        for p in priority:
+            for t in spacy_tokens[::-1]:  # Go backwards through the list
+                if t.pos_ == p:
+                    # This isn't really a span.. == LAZY for now
+                    found_spans.append([t])
+            if len(found_spans)>0: 
+                break # Stop going through list once something found
+            
     #keywords=[]
     #for span in found_spans:
     #    keywords.append( '_'.join(t.lemma_.lower().strip() for t in span) )
@@ -289,6 +300,7 @@ if '__main__' == __name__:
     DONE : Noun phrases into compound words =Keywords (~works)
     DONE : Separate commas out in lists in cells (works)
     DONE : Think about the word 'and' in lists in cells (works)
+    DONE : Force extraction of at least 1 keyword from a token span (input flag)
     Look for badly hyphenated word '-' and fix  (exceptions file into repo)
     Look for badly transferred keywords ({'red_light'} should be {'red', 'light'}) and fix (exceptions file into repo)
 
@@ -303,6 +315,6 @@ if '__main__' == __name__:
 
     Make basic graph from Keyword interconnects of Statements
     Find shortest path from Q->A via https://en.wikipedia.org/wiki/Dijkstra's_algorithm
-    
+
 
     """
