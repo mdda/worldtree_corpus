@@ -314,9 +314,19 @@ if '__main__' == __name__:
             s = Statement.parse_raw( l )
             statements.append( s )
 
-
     #print(len(statements))  # 13K in total (includes COMBOs)
     #print(statements[123])
+
+    # Ok, so let's look at the unique Keywords
+    keyword_counts = dict()
+    for s in statements:
+        for k in s.keywords:
+            if not k in keyword_counts:
+                keyword_counts[k]=0
+            keyword_counts[k]+=1
+    for k,v in sorted(keyword_counts.items()):
+        print(f"{v:4d} : {k}")
+    # jq -c . data/statements.jsonl | grep termite
 
     """
     # TODO:
