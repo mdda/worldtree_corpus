@@ -366,8 +366,9 @@ if '__main__' == __name__:
     DONE : Separate commas out in lists in cells (works)
     DONE : Think about the word 'and' in lists in cells (works)
     DONE : Force extraction of at least 1 keyword from a token span (input flag)
-    Look for badly hyphenated word '-' and fix  (exceptions file into repo)
-    Look for badly transferred keywords ({'red_light'} should be {'red', 'light'}) and fix (exceptions file into repo)
+    DONE : Look for badly hyphenated word '-' and fix  (exceptions file into repo)
+    DONE : Look for badly transferred keywords ({'red_light'} should be {'red', 'light'}) and fix (exceptions file into repo)
+    More fix-ups for keyword relabelling (ongoing)
 
     Do keywords and other basic preproc on Q&A datasets
     Do some of the fancier preproc ideas on Q&A datasets

@@ -10,7 +10,10 @@ black-eyed
 bowl-shaped
 box-like
 by-product
-carbon-nitrogen
+
+# These don't really 'work' : so let spacy split it up
+#carbon-nitrogen
+
 carrion-like
 coal-fire
 cold-blooded
@@ -49,7 +52,7 @@ low-energy
 low-lying
 low-pressure
 
-# Hmm...  Should check final output
+# Hmm...  Should check final output (fix via keyword relabel)
 main-sequence
 main-sequences
 
