@@ -4,7 +4,7 @@ import warnings
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Tuple, Set
 
-import csv, json
+import re, csv, json
 import numpy as np
 #import pandas as pd
 
@@ -14,6 +14,10 @@ from tqdm import tqdm
 
 import spacy
 nlp = spacy.load("en_core_web_sm", disable=["ner", "deps"])  # "tagger", "parser", 
+
+TASK_BASE = '../tg2020task'
+RDAI_BASE = '../data/'
+
 
 # Type-definitions
 UID=str
@@ -94,6 +98,30 @@ def extract_keywords(spacy_tokens, require_keywords=True) -> Keywords:
     for span in found_spans:
         keywords.add( '_'.join(t.lemma_.lower().strip() for t in span) )
     return keywords
+
+hyphenations=None
+def fix_hyphenations(txt):
+    global hyphenations
+
+    hyphenated = re.findall(r'\w+\-[\w\-]+', txt)
+    if len(hyphenated)==0:
+        return txt # Leave quickly
+
+    # Read and cache the hyphenations.csv file
+    if hyphenations is None:
+        hyphenations=dict()
+        with open(os.path.join(RDAI_BASE, 'hyphenations.csv')) as f:
+            for l in f.readlines():
+                l=l.strip()
+                if len(l)==0 or l.startswith('#'):
+                    continue
+                hyphenations[l] = l.replace('-', '+')
+
+    for h in hyphenated:
+        print(f"DEBUG:hyphenated:{h.strip()}:{txt.strip()}")
+        # Mutating value of txt : Oh No!
+        txt = txt.replace(h, hyphenations.get(h, h))
+    return txt    
 
 def read_explanation_file(path: str, table_name: str) -> List[Statement]:
     header, fields, rows, uid_col = [], dict(), [], None
@@ -187,15 +215,13 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
                 #    char_idx_arr.append(loc)
                 char_idx_arr.extend( [loc]*(len(tok)+1) )  # Slicker
 
-            # Don't change the number of characters!
-            #tok_txt  = tok_txt.replace("single-celled", "singleXcelled")
-            tok_txt  = tok_txt.replace("single-celled", "single+celled") # Works
-            #tok_txt  = tok_txt.replace("single_celled", "singlecelled") # NOPE
-            tok_txt  = tok_txt.replace("six-sided", "six+sided") # Works
-            tok_txt  = tok_txt.replace("face-centered", "face+centered") # Works
-            
+            tok_txt = fix_hyphenations(tok_txt)
+
             # infrared NOUN
+
             # two more more materials -> two or more materials
+            # distructive potential of hurricanes -> destructive potential of hurricanes
+            # cooler than yellow-dwaf stars -> cooler than yellow-dwarf stars
 
             doc=nlp(tok_txt)
 
@@ -258,9 +284,6 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
     return statements
 
 if '__main__' == __name__:
-    TASK_BASE = '../tg2020task'
-    RDAI_BASE = '../'
-
     statements_file = os.path.join(RDAI_BASE, 'statements.jsonl')
 
     if not os.path.isfile(statements_file):
