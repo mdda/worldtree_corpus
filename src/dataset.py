@@ -321,10 +321,10 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
         #if row_i>5: break
     return statements
 
-def load_statements():
+def load_statements(regenerate=False):
     statements_file = os.path.join(RDAI_BASE, 'statements.jsonl')
 
-    if not os.path.isfile(statements_file):
+    if regenerate or not os.path.isfile(statements_file):
         with open(os.path.join(TASK_BASE, 'tableindex.txt'), 'rt') as index:
             tables = [l.replace('.tsv', '').strip() for l in index.readlines()]
 
