@@ -37,10 +37,12 @@ class Statement(BaseModel):
     keywords: Keywords
 
 class TxtAndKeywords(BaseModel):
-    txt: str
-    keywords: List[Keywords]
+    raw_txt: str
+    keywords: List[Keywords]=[]
 
 class QuestionAnswer(BaseModel):
+    question_id: UID
+
     question: TxtAndKeywords
     answer  : TxtAndKeywords
     wrong   : List[TxtAndKeywords]
@@ -353,23 +355,81 @@ def print_keyword_counts(keyword_counts:Dict[str,int])->None:
         print(f"{v:4d} : {k}")
     # jq -c . data/statements.jsonl | grep termite
 
-if '__main__' == __name__:
-    statements = load_statements()
+def get_keyword_counts_from_statements(statements:List[Statement])->Dict[str,int]:
+    keyword_counts = dict()
+    for s in statements:
+        for k in s.keywords:
+            if not k in keyword_counts:
+                keyword_counts[k]=0
+            keyword_counts[k]+=1
+    return keyword_counts
 
+
+def read_qanda_file(version:str, keyword_counts) -> List[QuestionAnswer]:
+    qanda_file=os.path.join(TASK_BASE, f'questions.{version}.tsv')
+
+    header, rows = [], []
+    with open(qanda_file, 'rt') as fd:
+        rd = csv.reader(fd, delimiter="\t", quotechar='"')
+        for i, row in enumerate(rd):
+            if i==0: 
+                header=row
+            else:    
+                rows.append(row)
+    print(f"Read {len(rows)} questions from {version}")
+
+    cols=[ header.index(col) for col in "QuestionID,AnswerKey,explanation,question".split(',') ]
+    col_id, col_ans, col_ex, col_q = cols
+
+    qa_arr=[]
+    for row in rows:
+        q = row[col_q]
+        a_label = row[col_ans]
+
+        multi=re.split(r'\s*(\([A-F1-6]\))\s*', q)
+        #print(multi) # question itself is in [0]
+
+        pos_label = multi.index(f'({a_label})')
+        if pos_label<=0:
+            print(f"BAD LABEL '{a_label}' in question {row[col_id]}")
+            exit(0)
+
+        answer, wrong = None, []
+        for i in range(1,len(multi), 2):
+            txt = multi[i+1]
+            if i==pos_label:
+                answer = txt
+            else:
+                wrong.append(txt)
+
+        qa = QuestionAnswer(
+                question_id=row[col_id],
+
+                question= TxtAndKeywords(raw_txt=multi[0]),
+                answer  = TxtAndKeywords(raw_txt=answer),
+                wrong   =[TxtAndKeywords(raw_txt=txt) for txt in wrong],
+            )
+        qa_arr.append( qa )
+
+    #print(len(qa_arr))
+    return qa_arr
+
+if '__main__' == __name__:
+    statements = load_statements()\
     #print(len(statements))  # 13K in total (includes COMBOs)
     #print(statements[123])
 
+    keyword_counts = get_keyword_counts_from_statements(statements)
     if False:
         # Ok, so let's look at the unique Keywords
-        keyword_counts = dict()
-        for s in statements:
-            for k in s.keywords:
-                if not k in keyword_counts:
-                    keyword_counts[k]=0
-                keyword_counts[k]+=1
         print_keyword_counts(keyword_counts)
 
-    # Parsing 
+    # Parsing QuestionAnswers requires:
+    #   keywords (via keyword_counts) : for simple string matching
+
+    #qanda_train = read_qanda_file('train', keyword_counts=keyword_counts)
+    qanda_dev   = read_qanda_file('dev', keyword_counts=keyword_counts)
+    #qanda_test  = read_qanda_file('test', keyword_counts=keyword_counts)
 
     """
     # TODO:
