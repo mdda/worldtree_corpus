@@ -40,14 +40,18 @@ class TxtAndKeywords(BaseModel):
     raw_txt: str
     keywords: List[Keywords]=[]
 
+class ExplanationUsed(BaseModel):
+    uid:   UID
+    reason: str
+
 class QuestionAnswer(BaseModel):
     question_id: UID
 
     question: TxtAndKeywords
-    answer  : TxtAndKeywords
-    wrong   : List[TxtAndKeywords]
+    # Correct answer is at answers[0]
+    answers  : List[TxtAndKeywords]
 
-    explanation_gold: List[Statement] = []
+    explanation_gold: List[ExplanationUsed]
     # Becomes part of initial explanation :
     question_statements: List[Statement] = [] 
 
@@ -365,7 +369,7 @@ def get_keyword_counts_from_statements(statements:List[Statement])->Dict[str,int
     return keyword_counts
 
 
-def read_qanda_file(version:str, keyword_counts) -> List[QuestionAnswer]:
+def read_qanda_file(version:str) -> List[QuestionAnswer]:
     qanda_file=os.path.join(TASK_BASE, f'questions.{version}.tsv')
 
     header, rows = [], []
@@ -378,15 +382,13 @@ def read_qanda_file(version:str, keyword_counts) -> List[QuestionAnswer]:
                 rows.append(row)
     print(f"Read {len(rows)} questions from {version}")
 
-    cols=[ header.index(col) for col in "QuestionID,AnswerKey,explanation,question".split(',') ]
-    col_id, col_ans, col_ex, col_q = cols
+    cols=[ header.index(col) for col in "QuestionID,question,AnswerKey,explanation".split(',') ]
 
     qa_arr=[]
     for row in rows:
-        q = row[col_q]
-        a_label = row[col_ans]
+        q_id, q_txt, a_label, ex_gold = [row[col] for col in cols]
 
-        multi=re.split(r'\s*(\([A-F1-6]\))\s*', q)
+        multi=re.split(r'\s*(\([A-F1-6]\))\s*', q_txt)
         #print(multi) # question itself is in [0]
 
         pos_label = multi.index(f'({a_label})')
@@ -402,12 +404,27 @@ def read_qanda_file(version:str, keyword_counts) -> List[QuestionAnswer]:
             else:
                 wrong.append(txt)
 
-        qa = QuestionAnswer(
-                question_id=row[col_id],
+        # Reorder, so that correct answer is always '0' in the list
+        answers=[ TxtAndKeywords(raw_txt=answer) ]      
+        answers.extend(
+            [ TxtAndKeywords(raw_txt=txt) for txt in wrong ] 
+        )
 
+        explanations=[]
+        for ex_reason in ex_gold.split(' '):
+            if len(ex_reason)==0: 
+                #print(version, q_id, ex_reason)
+                break  # Mercury_7221305 (and whole of test set)
+            statement_uid, reason = ex_reason.split('|')
+            explanations.append(
+                ExplanationUsed(uid=statement_uid, reason=reason)
+            )
+
+        qa = QuestionAnswer(
+                question_id=q_id,
                 question= TxtAndKeywords(raw_txt=multi[0]),
-                answer  = TxtAndKeywords(raw_txt=answer),
-                wrong   =[TxtAndKeywords(raw_txt=txt) for txt in wrong],
+                answers = answers,
+                explanation_gold = explanations,
             )
         qa_arr.append( qa )
 
@@ -427,9 +444,11 @@ if '__main__' == __name__:
     # Parsing QuestionAnswers requires:
     #   keywords (via keyword_counts) : for simple string matching
 
-    #qanda_train = read_qanda_file('train', keyword_counts=keyword_counts)
-    qanda_dev   = read_qanda_file('dev', keyword_counts=keyword_counts)
-    #qanda_test  = read_qanda_file('test', keyword_counts=keyword_counts)
+    #qanda_train = read_qanda_file('train')
+    qanda_dev   = read_qanda_file('dev')
+    #qanda_test  = read_qanda_file('test')
+
+    #qanda_dev = qanda_preprocess_keywords(qanda_dev, keyword_counts=keyword_counts)
 
     """
     # TODO:
@@ -441,6 +460,7 @@ if '__main__' == __name__:
     DONE : Look for badly transferred keywords ({'red_light'} should be {'red', 'light'}) and fix (exceptions file into repo)
     More fix-ups for keyword relabelling (ongoing)
 
+    DONE : Read Q&A datasets (extract questions, and correct and wrong answers)
     Do keywords and other basic preproc on Q&A datasets
     See whether Keywords need more relabelling, etc
 
