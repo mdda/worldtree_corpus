@@ -315,7 +315,7 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
         #if row_i>5: break
     return statements
 
-if '__main__' == __name__:
+def load_statements():
     statements_file = os.path.join(RDAI_BASE, 'statements.jsonl')
 
     if not os.path.isfile(statements_file):
@@ -346,19 +346,30 @@ if '__main__' == __name__:
             s = Statement.parse_raw( l )
             statements.append( s )
 
-    #print(len(statements))  # 13K in total (includes COMBOs)
-    #print(statements[123])
+    return statements
 
-    # Ok, so let's look at the unique Keywords
-    keyword_counts = dict()
-    for s in statements:
-        for k in s.keywords:
-            if not k in keyword_counts:
-                keyword_counts[k]=0
-            keyword_counts[k]+=1
+def print_keyword_counts(keyword_counts:Dict[str,int])->None:
     for k,v in sorted(keyword_counts.items()):
         print(f"{v:4d} : {k}")
     # jq -c . data/statements.jsonl | grep termite
+
+if '__main__' == __name__:
+    statements = load_statements()
+
+    #print(len(statements))  # 13K in total (includes COMBOs)
+    #print(statements[123])
+
+    if False:
+        # Ok, so let's look at the unique Keywords
+        keyword_counts = dict()
+        for s in statements:
+            for k in s.keywords:
+                if not k in keyword_counts:
+                    keyword_counts[k]=0
+                keyword_counts[k]+=1
+        print_keyword_counts(keyword_counts)
+
+    # Parsing 
 
     """
     # TODO:
@@ -371,7 +382,11 @@ if '__main__' == __name__:
     More fix-ups for keyword relabelling (ongoing)
 
     Do keywords and other basic preproc on Q&A datasets
-    Do some of the fancier preproc ideas on Q&A datasets
+    See whether Keywords need more relabelling, etc
+
+    Create Q&A dataset fancier preproc : MoveStatmentsFromQuestion
+    Create Q&A dataset fancier preproc : MoveAssumptionsFromQuestionToAnswer
+    Create Q&A dataset fancier preproc : ResolveExplanationsToSpecifics
 
     qa_raw = QuestionAnswer()
     qa_enh = qa_raw
