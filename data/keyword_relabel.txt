@@ -11,6 +11,7 @@
 young_bird:young,bird
 yellow+dwaf_star,yellow_dwarf_star:yellow_dwarf,star
 red_dwarf_star:red_dwarf,star
+weater:weather
 
 # Just chasing down 'star'
 stellar_formation:stellar,formation
@@ -32,6 +33,19 @@ nutrient-_rich_water:nutrient+rich,water
 regional_air_masse:regional,air_mass
 carbon_dioxide_waste:carbon_dioxide,waste
 initial_energy_gain:initial,energy_gain
+appropriate_taxonomic_rank:appropriate,taxonomic_rank
+different_taxonomic_family:different,taxonomic_family
+mass_production_manufacturing_system:mass_production,manufacturing_system
+custom_manufacturing_system:custom,manufacturing_system
+volcano_eruption:volcanic_eruption
+harmful_ultraviolet_ray:harmful,ultraviolet_ray
+transitional_metal_family:transition_metal,family
+homozygous_dominant_living_thing:homozygous_dominant,living_thing
+haploid_sex_cell:haploid,sex_cell
+more_sediment:more,sediment
+calcium_carbonate_deposit:calcium_carbonate,deposit
+less_density:less,density
+subducted_tectonic_plate:subduct,tectonic_plate
 
 # Should have been in spacy lemmatisation anyway
 writing:write
@@ -43,3 +57,16 @@ dissolving_limestone:dissolving,limestone
 upwelle:upwelling
 air_masse:air_mass
 warm+bloode:warm+blooded
+squeezing:squeeze
+zebras:zebra
+vibrating:vibrate
+travelling:travel
+separated:separate
+separating:separate
+photosynthesize:photosynthesis
+subduction:subduct
+subduction_process:subduct_process
+toasting:toast
+toaster:toast
+
+

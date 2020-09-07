@@ -38,7 +38,7 @@ class Statement(BaseModel):
 
 class TxtAndKeywords(BaseModel):
     raw_txt: str
-    keywords: List[Keywords]=[]
+    keywords: Keywords=set()
 
 class ExplanationUsed(BaseModel):
     uid:   UID
@@ -148,8 +148,14 @@ def extract_keywords(spacy_tokens, require_keywords=True) -> Keywords:
                 if t.pos_ == p:
                     # This isn't really a span.. == LAZY for now
                     found_spans.append([t])
+                    
             if len(found_spans)>0: 
                 break # Stop going through list once something found
+
+    if len(found_spans)==0 and require_keywords:
+        if len(spacy_tokens)==1:
+            # There's only one word in the span : Use it!
+            found_spans.append([spacy_tokens[0]])
             
     #keywords=[]
     #for span in found_spans:
@@ -158,6 +164,9 @@ def extract_keywords(spacy_tokens, require_keywords=True) -> Keywords:
     for span in found_spans:
         keyword = '_'.join(t.lemma_.lower().strip() for t in span)
         keywords.add( keyword )
+        if True:  # Add the last word in the span as a keyword too
+            keyword = span[-1].lemma_.lower().strip()
+            keywords.add( keyword )
     return fix_keyword_set(keywords)
 
 
@@ -260,6 +269,7 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
             # two more more materials -> two or more materials
             # distructive potential of hurricanes -> destructive potential of hurricanes
             # cooler than yellow-dwaf stars -> cooler than yellow-dwarf stars
+            #? predicting weather requires studying weater -> predicting weather requires studying weather
 
             doc=nlp(tok_txt)
 
@@ -431,10 +441,22 @@ def read_qanda_file(version:str) -> List[QuestionAnswer]:
     #print(len(qa_arr))
     return qa_arr
 
+def add_keywords_direct(tk:TxtAndKeywords)->None:
+    tok_txt = fix_hyphenations(tk.raw_txt)
+    doc=nlp(tok_txt)
+    tk.keywords = extract_keywords([ t for t in doc]) 
+    #return tk
+
 def load_qanda(version:str, regenerate=True)-> List[QuestionAnswer]:
     qanda_cache_file = os.path.join(RDAI_BASE, f'questions.{version}.jsonl')
     if regenerate or not os.path.isfile(qanda_cache_file):
         qanda = read_qanda_file(version)
+
+        for qa in qanda:
+            # Changes underlying TxtAndKeywords internally
+            add_keywords_direct(qa.question)
+            for a in qa.answers:
+                add_keywords_direct(a)
 
         qanda_all = qanda
         # Save in qanda_cache_file
@@ -453,23 +475,32 @@ def load_qanda(version:str, regenerate=True)-> List[QuestionAnswer]:
     return qa_arr
 
 if '__main__' == __name__:
-    statements = load_statements()\
+    statements = load_statements()
     #print(len(statements))  # 13K in total (includes COMBOs)
     #print(statements[123])
 
     keyword_counts = get_keyword_counts_from_statements(statements)
-    if False:
-        # Ok, so let's look at the unique Keywords
+    if False: # Let's look at the unique Keywords
         print_keyword_counts(keyword_counts)
-    if True:
+    if False: # Let's look at the longest compound keywords
         for k,v in keyword_counts.items():
             if '_' in k:
                 n_words=len(k.split('_'))
                 if n_words>2:
                     print(n_words,k,v)
+    if False: # Let's look at the words within compound keywords
+        keyword_base=dict()
+        for k,v in keyword_counts.items():
+            for kw in k.split('_'):
+                if kw not in keyword_base:
+                    keyword_base[kw]=[]  # keep a list, so we can measure frequency
+                keyword_base[kw].append(k)
+        for k,kw_list in sorted(keyword_base.items()):
+            print(f"{k:<20s}:{len(kw_list):4d}:"+
+              ','.join(sorted(list(set(kw_list)))))
 
     # Parsing QuestionAnswers requires:
-    #   keywords (via keyword_counts) : for simple string matching
+    #   ?? keywords (via keyword_counts) : for simple string matching
 
     #qanda_train = load_qanda('train') # 1.8MB
     qanda_dev   = load_qanda('dev')   # 400k
