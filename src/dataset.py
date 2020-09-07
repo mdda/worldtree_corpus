@@ -461,6 +461,12 @@ if '__main__' == __name__:
     if False:
         # Ok, so let's look at the unique Keywords
         print_keyword_counts(keyword_counts)
+    if True:
+        for k,v in keyword_counts.items():
+            if '_' in k:
+                n_words=len(k.split('_'))
+                if n_words>2:
+                    print(n_words,k,v)
 
     # Parsing QuestionAnswers requires:
     #   keywords (via keyword_counts) : for simple string matching
@@ -482,7 +488,7 @@ if '__main__' == __name__:
     More fix-ups for keyword relabelling (ongoing)
 
     DONE : Read Q&A datasets (extract questions, and sort answers - correct is [0])
-    Do keywords and other basic preproc on Q&A datasets
+    Do Keywords preproc on Q&A datasets
     See whether Keywords need more relabelling, etc
 
     Create Q&A dataset fancier preproc : MoveStatmentsFromQuestion
