@@ -344,7 +344,7 @@ def load_statements():
                 f.write( s.json() )
                 f.write('\n')
 
-    # Now load in the statements file
+    # Load in the preprocessed statements file
     statements = []
     with open(statements_file, 'rt') as f:
         for l in f.readlines():
@@ -431,6 +431,27 @@ def read_qanda_file(version:str) -> List[QuestionAnswer]:
     #print(len(qa_arr))
     return qa_arr
 
+def load_qanda(version:str, regenerate=True)-> List[QuestionAnswer]:
+    qanda_cache_file = os.path.join(RDAI_BASE, f'questions.{version}.jsonl')
+    if regenerate or not os.path.isfile(qanda_cache_file):
+        qanda = read_qanda_file(version)
+
+        qanda_all = qanda
+        # Save in qanda_cache_file
+        with open(qanda_cache_file, 'wt') as f:
+            for qa in qanda_all:
+                f.write( qa.json() )
+                f.write('\n')
+
+    # Load in the preprocessed qanda file
+    qa_arr = []
+    with open(qanda_cache_file, 'rt') as f:
+        for l in f.readlines():
+            #print(json.loads(l))
+            qa = QuestionAnswer.parse_raw( l )
+            qa_arr.append( qa )
+    return qa_arr
+
 if '__main__' == __name__:
     statements = load_statements()\
     #print(len(statements))  # 13K in total (includes COMBOs)
@@ -444,9 +465,9 @@ if '__main__' == __name__:
     # Parsing QuestionAnswers requires:
     #   keywords (via keyword_counts) : for simple string matching
 
-    #qanda_train = read_qanda_file('train')
-    qanda_dev   = read_qanda_file('dev')
-    #qanda_test  = read_qanda_file('test')
+    #qanda_train = load_qanda('train') # 1.8MB
+    qanda_dev   = load_qanda('dev')   # 400k
+    #qanda_test  = load_qanda('test')  # 800k
 
     #qanda_dev = qanda_preprocess_keywords(qanda_dev, keyword_counts=keyword_counts)
 
@@ -460,7 +481,7 @@ if '__main__' == __name__:
     DONE : Look for badly transferred keywords ({'red_light'} should be {'red', 'light'}) and fix (exceptions file into repo)
     More fix-ups for keyword relabelling (ongoing)
 
-    DONE : Read Q&A datasets (extract questions, and correct and wrong answers)
+    DONE : Read Q&A datasets (extract questions, and sort answers - correct is [0])
     Do keywords and other basic preproc on Q&A datasets
     See whether Keywords need more relabelling, etc
 
