@@ -37,3 +37,17 @@ wtc.preprocess.convert_texts(["Which of these will most likely increase?", "Habi
 import pandas
 df_exp = wtc.preprocess.XYZ()
 ```
+
+### New-style install and preprocessing
+
+```
+git clone https://github.com/mdda/worldtree_corpus.git
+cd worldtree_corpus  # i.e. the REPO root directory
+#git branch -a
+git checkout -b textgraphs_2020 origin/textgraphs_2020
+./run_setup.bash
+./run_baseline.bash
+. env3/bin/activate
+cd src
+python3 dataset.py
+```
