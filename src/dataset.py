@@ -310,8 +310,8 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
 
             uid = row[uid_col]
             s = Statement(
+                uid     = uid if combo_idx==0 else f"{uid}_{combo_idx}",
                 uid_base= uid,
-                uid     = f"{uid}_{combo_idx}" if n_combos>1 else uid,
                 table   = table_name, 
 
                 hdr_arr = hdr_arr,
@@ -447,7 +447,7 @@ def add_keywords_direct(tk:TxtAndKeywords)->None:
     tk.keywords = extract_keywords([ t for t in doc]) 
     #return tk
 
-def load_qanda(version:str, regenerate=True)-> List[QuestionAnswer]:
+def load_qanda(version:str, regenerate=False)-> List[QuestionAnswer]:
     qanda_cache_file = os.path.join(RDAI_BASE, f'questions.{version}.jsonl')
     if regenerate or not os.path.isfile(qanda_cache_file):
         qanda = read_qanda_file(version)
@@ -473,6 +473,48 @@ def load_qanda(version:str, regenerate=True)-> List[QuestionAnswer]:
             qa = QuestionAnswer.parse_raw( l )
             qa_arr.append( qa )
     return qa_arr
+
+def qa_display_keywords(qa:QuestionAnswer, statements:List[Statement])->None:
+    # Get GUID -> statement dict
+    guid_to_statement={s.uid:s for s in statements}
+    # Look up the statements for the qa's gold explanation
+    qa_ex_statements=[ 
+        guid_to_statement[ex.uid] for ex in qa.explanation_gold
+    ]
+    qa_ex_statements.extend(qa.question_statements)
+    # gather all used Keywords
+    kw_all = set()
+    kw_all.update( qa.question.keywords )
+    for a in qa.answers:
+        kw_all.update( a.keywords )
+    for s in qa_ex_statements:
+        kw_all.update( s.keywords )
+
+    cols=(
+        ['q+']
+        +['  ']
+        +[f'a{i:1d}' for i,_ in enumerate(qa.answers)]
+        +['  ']
+        +[f'e{i:1x}' for i,_ in enumerate(qa.explanation_gold)]
+        +[f'b{i:1x}' for i,_ in enumerate(qa.question_statements)]
+    )
+
+    print(qa.question.raw_txt)
+    for i,a in enumerate(qa.answers):
+        print(f"   {'*' if i==0 else '-'}) : {a.raw_txt}")
+
+    for i,kw in enumerate(sorted(list(kw_all))):
+        if i%10==0:
+            print(' '*40+' '.join( cols ))
+        row=(
+            [ (kw in qa.question.keywords) ]
+            +[ False ]
+            +[ (kw in a.keywords) for a in qa.answers ]
+            +[ False ]
+            +[ (kw in s.keywords) for s in qa_ex_statements ]
+        )
+        print(f'{kw:>40s}'+' '.join( f'{" Y" if t else " ."}' for t in row ))
+
 
 if '__main__' == __name__:
     statements = load_statements()
@@ -507,6 +549,8 @@ if '__main__' == __name__:
     #qanda_test  = load_qanda('test')  # 800k
 
     #qanda_dev = qanda_preprocess_keywords(qanda_dev, keyword_counts=keyword_counts)
+    for i in [9]:  # Good examples : 
+        qa_display_keywords(qanda_dev[i], statements=statements)
 
     """
     # TODO:
@@ -519,7 +563,11 @@ if '__main__' == __name__:
     More fix-ups for keyword relabelling (ongoing)
 
     DONE : Read Q&A datasets (extract questions, and sort answers - correct is [0])
-    Do Keywords preproc on Q&A datasets
+    DONE : Do Keywords preproc on Q&A datasets
+
+    Table of Keyword counts for QA :: KW[i] : in_q : in_a : in_ex : ...
+    Matrix of Keyword overlap for QA :: (q,a,ex1,ex2,...,exN)**2
+
     See whether Keywords need more relabelling, etc
 
     Create Q&A dataset fancier preproc : MoveStatmentsFromQuestion
