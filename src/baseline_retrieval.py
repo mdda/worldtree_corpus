@@ -79,7 +79,7 @@ class SimpleRanker(BaseModel):
         arbitrary_types_allowed = True
 
     def make_pred(self, i_query: int, rank: List[int], data: Data) -> Prediction:
-        uids = [data.statements[i].uid for i in rank]
+        uids = [data.statements[i].uid_base for i in rank]
         uids = deduplicate(uids)
         return Prediction(qid=data.questions[i_query].question_id, uids=uids)
 
