@@ -1,17 +1,19 @@
+import pandas as pd
 import json
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union, Dict
 
 import numpy as np
 from fire import Fire
 from pydantic import BaseModel
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
+from torchvision.datasets.utils import download_and_extract_archive
 from tqdm import tqdm
 
 from bm25 import BM25Vectorizer
-from dataset import Statement, QuestionAnswer
+from dataset import Statement, QuestionAnswer, TxtAndKeywords
 from extra_data import SplitEnum
 
 sys.path.append("../tg2020task")
@@ -73,6 +75,7 @@ class Prediction(BaseModel):
 
 
 class SimpleRanker(BaseModel):
+    # Dev MAP = 0.37
     vectorizer: TfidfVectorizer = BM25Vectorizer()
 
     class Config:
@@ -83,22 +86,123 @@ class SimpleRanker(BaseModel):
         uids = deduplicate(uids)
         return Prediction(qid=data.questions[i_query].question_id, uids=uids)
 
+    def preprocess(self, x: Union[TxtAndKeywords, Statement]) -> str:
+        return x.raw_txt
+
+    def rank(self, vecs_q: np.ndarray, vecs_s: np.ndarray) -> np.ndarray:
+        distances: np.ndarray = cosine_distances(vecs_q, vecs_s)
+        ranking: np.ndarray = np.argsort(distances, axis=-1)
+        return ranking
+
     def run(self, data: Data) -> List[Prediction]:
-        statements: List[str] = [s.raw_txt for s in data.statements]
+        statements: List[str] = [self.preprocess(s) for s in data.statements]
         queries: List[str] = [
-            q.question.raw_txt + " " + q.answers[0].raw_txt for q in data.questions
+            self.preprocess(q.question) + " " + self.preprocess(q.answers[0])
+            for q in data.questions
         ]
         self.vectorizer.fit(statements + queries)
-        distances: np.ndarray = cosine_distances(
+        ranking = self.rank(
             self.vectorizer.transform(queries), self.vectorizer.transform(statements)
         )
-        ranking: np.ndarray = np.argsort(distances, axis=-1)
-        assert ranking.shape == (len(queries), len(statements))
-
         preds: List[Prediction] = []
         for i in tqdm(range(len(ranking))):
             preds.append(self.make_pred(i, list(ranking[i]), data))
         return preds
+
+
+class StageRanker(SimpleRanker):
+    # Dev MAP: 0.3816
+    num_per_stage: List[int] = [25, 100]
+
+    def recurse(
+        self,
+        vec_q: np.ndarray,
+        vecs_s: np.ndarray,
+        indices_s: np.ndarray,
+        num_per_stage: List[int],
+    ) -> List[int]:
+        num_s = vecs_s.shape[0]
+        assert num_s == len(indices_s)
+        if num_s == 0:
+            return []
+
+        num_keep = num_s
+        if num_per_stage:
+            num_keep = num_per_stage.pop(0)
+        num_next = max(num_s - num_keep, 0)
+
+        distances: np.ndarray = cosine_distances(vec_q, vecs_s)[0]
+        assert distances.shape == (num_s,)
+        rank = np.argsort(distances)
+
+        vecs_keep = vecs_s[rank][:num_keep]
+        indices_keep = indices_s[rank][:num_keep]
+        vec_q = np.max(vecs_keep, axis=0)
+
+        if num_next == 0:
+            vecs_s = np.array([])
+            indices_s = np.array([])
+        else:
+            vecs_s = vecs_s[rank][-num_next:]
+            indices_s = indices_s[rank][-num_next:]
+
+        return list(indices_keep) + self.recurse(
+            vec_q, vecs_s, indices_s, num_per_stage
+        )
+
+    def rank(self, vecs_q: np.ndarray, vecs_s: np.ndarray) -> np.ndarray:
+        num_q = vecs_q.shape[0]
+        num_s = vecs_s.shape[0]
+        ranking = np.zeros(shape=(num_q, num_s), dtype=np.int)
+        for i in tqdm(range(num_q)):
+            ranking[i] = self.recurse(
+                vecs_q[i], vecs_s, np.arange(num_s), list(self.num_per_stage)
+            )
+        return ranking
+
+
+class TextGraphsLemmatizer(BaseModel):
+    root: str = "/tmp/TextGraphLemmatizer"
+    url: str = "https://github.com/chiayewken/sutd-materials/releases/download/v0.1.0/worldtree_textgraphs_2019_010920.zip"
+    sep: str = "\t"
+    word_to_lemma: Optional[Dict[str, str]]
+
+    def read_csv(
+        self, path: Path, header: str = None, names: List[str] = None
+    ) -> pd.DataFrame:
+        return pd.read_csv(path, header=header, names=names, sep=self.sep)
+
+    @staticmethod
+    def preprocess(word: str) -> str:
+        # Remove punct eg dry-clean -> dryclean so
+        # they won't get split by downstream tokenizers
+        word = word.lower()
+        word = "".join([c for c in word if c.isalpha()])
+        return word
+
+    def load(self):
+        if not self.word_to_lemma:
+            download_and_extract_archive(self.url, self.root, self.root)
+            path = list(Path(self.root).glob("**/annotation"))[0]
+            df = self.read_csv(path / "lemmatization-en.txt", names=["lemma", "word"])
+            self.word_to_lemma = {}
+            for word, lemma in df.values:
+                self.word_to_lemma[self.preprocess(word)] = self.preprocess(lemma)
+
+    def run(self, text: str) -> str:
+        self.load()
+        return " ".join(self.word_to_lemma.get(w, w) for w in text.split())
+
+
+class LemmaRanker(SimpleRanker):
+    # Dev MAP:  0.3640
+    lemmatizer = TextGraphsLemmatizer()
+
+    def preprocess(self, x: Union[TxtAndKeywords, Statement]) -> str:
+        # return self.lemmatizer.run(x.raw_txt)
+        words = x.keywords
+        # words = ["".join([c for c in w if c.isalnum()]) for w in words]
+        return " ".join(words)
 
 
 class Scorer(BaseModel):
@@ -130,7 +234,9 @@ def main(data_split=SplitEnum.dev):
     data = Data(data_split=data_split)
     data.load()
     data.analyze()
-    ranker = SimpleRanker()
+    # ranker = SimpleRanker()
+    # ranker = StageRanker()
+    ranker = LemmaRanker()
     preds = ranker.run(data)
     Scorer().run(data.path_gold, preds)
 
