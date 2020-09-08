@@ -479,9 +479,9 @@ def qa_display(qa:QuestionAnswer,qa_ex_statements:List[Statement])->None:
     for i,a in enumerate(qa.answers):
         print(f"   {'*' if i==0 else '-'}) : {a.raw_txt}")
     for i,s in enumerate(qa.question_statements):
-        print(f"b{i:1x} : {s.raw_txt}")
+        print(f"b{i:1x} : [question txt]: {s.raw_txt}")
     for i,s in enumerate(qa_ex_statements):
-        print(f"e{i:1x} : {s.raw_txt}")
+        print(f"e{i:1x} : {'['+qa.explanation_gold[i].reason+']':<14s}: {s.raw_txt}")
 
 def qa_display_keywords(qa:QuestionAnswer, statements:List[Statement])->None:
     # Get GUID -> statement dict
@@ -604,7 +604,7 @@ if '__main__' == __name__:
     #qanda_test  = load_qanda('test')  # 800k
 
     #qanda_dev = qanda_preprocess_keywords(qanda_dev, keyword_counts=keyword_counts)
-    for i in [419]:  # Good examples : 
+    for i in [411]:  # Good examples : 
         qa_display_keywords(qanda_dev[i], statements=statements)
         qa_display_relatedness(qanda_dev[i], statements=statements)
 
