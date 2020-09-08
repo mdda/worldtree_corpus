@@ -545,11 +545,11 @@ if '__main__' == __name__:
     #   ?? keywords (via keyword_counts) : for simple string matching
 
     #qanda_train = load_qanda('train') # 1.8MB
-    qanda_dev   = load_qanda('dev')   # 400k
+    qanda_dev   = load_qanda('dev')   # 400k in 496 lines
     #qanda_test  = load_qanda('test')  # 800k
 
     #qanda_dev = qanda_preprocess_keywords(qanda_dev, keyword_counts=keyword_counts)
-    for i in [9]:  # Good examples : 
+    for i in [419]:  # Good examples : 
         qa_display_keywords(qanda_dev[i], statements=statements)
 
     """
