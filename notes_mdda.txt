@@ -32,7 +32,7 @@ To encourage transparency and replicability, all teams must publish their :
   Username	Score   
 1	alvysinger	0.5815
 2	webbley	    0.5809
-3	aisys	    0.5233
+3	aisys	      0.5233
 
 
 ## Installation
@@ -44,7 +44,9 @@ git checkout -b textgraphs_2020 origin/textgraphs_2020
 
 ./run_setup.bash
 ./run_baseline.bash
-
+# train.baseline.txt => 0.2469 MAP locally
+# dev.baseline.txt   => 0.2550 MAP locally
+# test.baseline.txt  => 0 MAP
 
 ## ...
 

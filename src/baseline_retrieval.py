@@ -193,14 +193,21 @@ class TextGraphsLemmatizer(BaseModel):
         self.load()
         return " ".join(self.word_to_lemma.get(w, w) for w in text.split())
 
+import spacy
+nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])  # "tagger", "parser", 
 
 class LemmaRanker(SimpleRanker):
     # Dev MAP:  0.3640
     lemmatizer = TextGraphsLemmatizer()
 
     def preprocess(self, x: Union[TxtAndKeywords, Statement]) -> str:
+        #print(x.raw_txt)
+        doc = nlp(x.raw_txt)
+        words = [token.lemma_ for token in doc]
+        #words = sorted(list(set(words))) # No change
+
         # return self.lemmatizer.run(x.raw_txt)
-        words = x.keywords
+        #words = x.keywords
         # words = ["".join([c for c in w if c.isalnum()]) for w in words]
         return " ".join(words)
 
