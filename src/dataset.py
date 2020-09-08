@@ -124,6 +124,25 @@ def fix_keyword_set(kws):
 # This assumes that tokens is a consecutive list of tokens 
 #   that spacy has processed from a doc
 def extract_keywords(spacy_tokens, require_keywords=True) -> Keywords:
+    found_spans = []
+    for t in spacy_tokens:
+        pos = t.pos_
+        if pos in 'NOUN|PROPN|ADJ|VERB|ADV':
+            found_spans.append([t])
+            
+    if len(found_spans)==0 and require_keywords:
+        if len(spacy_tokens)==1:
+            # There's only one word in the span : Use it!
+            found_spans.append([spacy_tokens[0]])
+
+    keywords=set()
+    for span in found_spans:
+        keywords.add( span[0].lemma_.lower().strip() )
+    return fix_keyword_set(keywords)
+
+# This assumes that tokens is a consecutive list of tokens 
+#   that spacy has processed from a doc
+def extract_keywords_complex(spacy_tokens, require_keywords=True) -> Keywords:
     in_span, current_span, found_spans = False, [], []
     for t in spacy_tokens[::-1]:  # Go backwards through the list
         pos = t.pos_
