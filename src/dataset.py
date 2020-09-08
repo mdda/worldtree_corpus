@@ -474,6 +474,15 @@ def load_qanda(version:str, regenerate=False)-> List[QuestionAnswer]:
             qa_arr.append( qa )
     return qa_arr
 
+def qa_display(qa:QuestionAnswer,qa_ex_statements:List[Statement])->None:
+    print(qa.question.raw_txt)
+    for i,a in enumerate(qa.answers):
+        print(f"   {'*' if i==0 else '-'}) : {a.raw_txt}")
+    for i,s in enumerate(qa.question_statements):
+        print(f"b{i:1x} : {s.raw_txt}")
+    for i,s in enumerate(qa_ex_statements):
+        print(f"e{i:1x} : {s.raw_txt}")
+
 def qa_display_keywords(qa:QuestionAnswer, statements:List[Statement])->None:
     # Get GUID -> statement dict
     guid_to_statement={s.uid:s for s in statements}
@@ -481,12 +490,18 @@ def qa_display_keywords(qa:QuestionAnswer, statements:List[Statement])->None:
     qa_ex_statements=[ 
         guid_to_statement[ex.uid] for ex in qa.explanation_gold
     ]
-    qa_ex_statements.extend(qa.question_statements)
+    #print(qa.question.raw_txt)
+    #for i,a in enumerate(qa.answers):
+    #    print(f"   {'*' if i==0 else '-'}) : {a.raw_txt}")
+    qa_display(qa,qa_ex_statements)
+
     # gather all used Keywords
     kw_all = set()
     kw_all.update( qa.question.keywords )
     for a in qa.answers:
         kw_all.update( a.keywords )
+    for s in qa.question_statements:
+        kw_all.update( s.keywords )
     for s in qa_ex_statements:
         kw_all.update( s.keywords )
 
@@ -495,13 +510,10 @@ def qa_display_keywords(qa:QuestionAnswer, statements:List[Statement])->None:
         +['  ']
         +[f'a{i:1d}' for i,_ in enumerate(qa.answers)]
         +['  ']
-        +[f'e{i:1x}' for i,_ in enumerate(qa.explanation_gold)]
         +[f'b{i:1x}' for i,_ in enumerate(qa.question_statements)]
+        +['  ']
+        +[f'e{i:1x}' for i,_ in enumerate(qa_ex_statements)]
     )
-
-    print(qa.question.raw_txt)
-    for i,a in enumerate(qa.answers):
-        print(f"   {'*' if i==0 else '-'}) : {a.raw_txt}")
 
     for i,kw in enumerate(sorted(list(kw_all))):
         if i%10==0:
@@ -511,10 +523,53 @@ def qa_display_keywords(qa:QuestionAnswer, statements:List[Statement])->None:
             +[ False ]
             +[ (kw in a.keywords) for a in qa.answers ]
             +[ False ]
+            +[ (kw in s.keywords) for s in qa.question_statements ]
+            +[ False ]
             +[ (kw in s.keywords) for s in qa_ex_statements ]
         )
         print(f'{kw:>40s}'+' '.join( f'{" Y" if t else " ."}' for t in row ))
 
+def qa_display_relatedness(qa:QuestionAnswer, statements:List[Statement])->None:
+    # Get GUID -> statement dict
+    guid_to_statement={s.uid:s for s in statements}
+    # Look up the statements for the qa's gold explanation
+    qa_ex_statements=[ 
+        guid_to_statement[ex.uid] for ex in qa.explanation_gold
+    ]
+    qa_display(qa,qa_ex_statements)
+
+    hdrs=(
+        ['q+']
+        +['  ']
+        +[f'a{i:1d}' for i,_ in enumerate(qa.answers)]
+        +['  ']
+        +[f'b{i:1x}' for i,_ in enumerate(qa.question_statements)]
+        +['  ']
+        +[f'e{i:1x}' for i,_ in enumerate(qa_ex_statements)]
+    )
+    # Get all the keywords for each of these cols into one array
+    cols=(
+        [ qa.question.keywords ]
+        +[set()]
+        +[a.keywords for a in qa.answers]
+        +[set()]
+        +[s.keywords for s in qa.question_statements]
+        +[set()]
+        +[s.keywords for s in qa_ex_statements]
+    )
+
+    print('\n'+' '*5+' '.join( hdrs )+" : self, ext")
+    for row_i,row_kw in enumerate(cols):
+        row_out, slf, ext=[],0,0
+        for col_j,col_kw in enumerate(cols):
+            c = len(row_kw & col_kw)
+            s='  ' if c==0 else f'{c:2d}'
+            row_out.append(s)
+            if row_i==col_j:
+                slf+=c
+            else:
+                ext+=c
+        print(f"{hdrs[row_i]:>3s} :"+' '.join(row_out)+f" :  {slf:3d}, {ext:3d}")
 
 if '__main__' == __name__:
     statements = load_statements()
@@ -551,6 +606,7 @@ if '__main__' == __name__:
     #qanda_dev = qanda_preprocess_keywords(qanda_dev, keyword_counts=keyword_counts)
     for i in [419]:  # Good examples : 
         qa_display_keywords(qanda_dev[i], statements=statements)
+        qa_display_relatedness(qanda_dev[i], statements=statements)
 
     """
     # TODO:
