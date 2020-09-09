@@ -121,6 +121,7 @@ class Retriever(BaseModel):
 class StageRanker(Ranker):
     # Dev MAP: 0.3816
     num_per_stage: List[int] = [25, 100]
+    scale: float = 1.0
 
     def recurse(
         self,
@@ -128,6 +129,7 @@ class StageRanker(Ranker):
         vecs_s: csr_matrix,
         indices_s: np.ndarray,
         num_per_stage: List[int],
+        num_accum: int = 0,
     ) -> List[int]:
         num_s = vecs_s.shape[0]
         assert num_s == len(indices_s)
@@ -145,7 +147,10 @@ class StageRanker(Ranker):
 
         vecs_keep = vecs_s[rank][:num_keep]
         indices_keep = indices_s[rank][:num_keep]
-        vec_q = np.max(vecs_keep, axis=0)
+        vec_new = np.max(vecs_keep, axis=0)
+        vec_new = vec_new / (self.scale ** num_accum)
+        vec_q = vec_q.maximum(vec_new)
+        num_accum += num_keep
 
         if num_next == 0:
             vecs_s = np.array([])
@@ -155,7 +160,7 @@ class StageRanker(Ranker):
             indices_s = indices_s[rank][-num_next:]
 
         return list(indices_keep) + self.recurse(
-            vec_q, vecs_s, indices_s, num_per_stage
+            vec_q, vecs_s, indices_s, num_per_stage, num_accum,
         )
 
     def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
@@ -321,10 +326,14 @@ def main(data_split=SplitEnum.dev):
     # retriever = Retriever(preproc=KeywordProcessor())  # Dev MAP:  0.4311
     # retriever = Retriever(
     #     preproc=KeywordProcessor(), ranker=StageRanker()
-    # )  # Dev MAP:  0.4344
+    # )  # Dev MAP:  0.4354, Dev recall@512=0.9084
+    # retriever = Retriever(
+    #     preproc=KeywordProcessor(), ranker=IterativeRanker()
+    # )  # Dev MAP:  0.4505, Dev recall@512=0.8880
     retriever = Retriever(
-        preproc=KeywordProcessor(), ranker=IterativeRanker()
-    )  # Dev MAP:  0.4505
+        preproc=KeywordProcessor(),
+        ranker=StageRanker(num_per_stage=[16, 32, 64, 128], scale=1.5),
+    )  # Dev MAP:  0.4368, Dev recall@512=0.9177
 
     preds = retriever.run(data)
     Scorer().run(data.path_gold, preds)
