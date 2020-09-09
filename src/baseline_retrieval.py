@@ -1,14 +1,16 @@
-import pandas as pd
 import json
 import sys
 from pathlib import Path
 from typing import List, Optional, Union, Dict
 
 import numpy as np
+import pandas as pd
+import spacy
 from fire import Fire
 from pydantic import BaseModel
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
+from spacy.lang.en import English
 from torchvision.datasets.utils import download_and_extract_archive
 from tqdm import tqdm
 
@@ -161,7 +163,12 @@ class StageRanker(SimpleRanker):
         return ranking
 
 
-class TextGraphsLemmatizer(BaseModel):
+class Lemmatizer(BaseModel):
+    def run(self, text: str) -> str:
+        raise NotImplementedError
+
+
+class TextGraphsLemmatizer(Lemmatizer):
     root: str = "/tmp/TextGraphLemmatizer"
     url: str = "https://github.com/chiayewken/sutd-materials/releases/download/v0.1.0/worldtree_textgraphs_2019_010920.zip"
     sep: str = "\t"
@@ -193,26 +200,25 @@ class TextGraphsLemmatizer(BaseModel):
         self.load()
         return " ".join(self.word_to_lemma.get(w, w) for w in text.split())
 
-#import spacy
-#nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])  # "tagger", "parser", 
 
 class LemmaRanker(SimpleRanker):
-    # Dev MAP:  0.3640
-    lemmatizer = TextGraphsLemmatizer()
+    # Dev MAP:  0.4311
+    lemmatizer: Lemmatizer = TextGraphsLemmatizer()
+    nlp: English = spacy.load("en_core_web_sm", disable=["tagger", "ner", "parser"])
+    use_spacy: bool = False
 
     def preprocess(self, x: Union[TxtAndKeywords, Statement]) -> str:
-        #print(x.raw_txt)
-        if False: # Scores 0.4370 on dev
+        if self.use_spacy:  # Scores 0.4370 on dev
             # Needs import spacy and spacy.load above
-            doc = nlp(x.raw_txt)
+            doc = self.nlp(x.raw_txt)
             words = [token.lemma_ for token in doc]
-            #words = sorted(list(set(words))) # No change
-        if True:  # Scores 0.4311 on dev
+            # words = sorted(list(set(words))) # No change
+        else:  # Scores 0.4311 on dev
             words = x.keywords
 
         # return self.lemmatizer.run(x.raw_txt)
-        #words = x.keywords
-        #words = ["".join([c for c in w if c.isalnum()]) for w in words]
+        # words = x.keywords
+        # words = ["".join([c for c in w if c.isalnum()]) for w in words]
         return " ".join(words)
 
 
@@ -241,15 +247,41 @@ class Scorer(BaseModel):
         return qid2score
 
 
+class ResultAnalyzer(BaseModel):
+    thresholds: List[int] = [32, 64, 128, 256, 512, 1024]
+
+    def run_threshold(
+        self, data: Data, preds: List[Prediction], threshold: int
+    ) -> float:
+        assert len(data.questions) == len(preds)
+        scores = []
+
+        for q, p in zip(data.questions, preds):
+            assert q.question_id == p.qid
+            predicted = set(p.uids[:threshold])
+            gold = set([e.uid for e in q.explanation_gold])
+            true_pos = predicted.intersection(gold)
+            recall = len(true_pos) / len(gold)
+            scores.append(recall)
+
+        return sum(scores) / len(scores)
+
+    def run(self, data: Data, preds: List[Prediction]):
+        for threshold in self.thresholds:
+            recall = self.run_threshold(data, preds, threshold)
+            print(dict(threshold=threshold, recall=recall))
+
+
 def main(data_split=SplitEnum.dev):
     data = Data(data_split=data_split)
     data.load()
     data.analyze()
     # ranker = SimpleRanker()
     # ranker = StageRanker()
-    ranker = LemmaRanker()
+    ranker = LemmaRanker(use_spacy=False)
     preds = ranker.run(data)
     Scorer().run(data.path_gold, preds)
+    ResultAnalyzer().run(data, preds)
 
 
 if __name__ == "__main__":
