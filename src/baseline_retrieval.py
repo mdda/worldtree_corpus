@@ -8,6 +8,7 @@ import pandas as pd
 import spacy
 from fire import Fire
 from pydantic import BaseModel
+from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
 from spacy.lang.en import English
@@ -76,9 +77,22 @@ class Prediction(BaseModel):
         return [self.sep.join([self.qid, p]) for p in self.uids]
 
 
-class SimpleRanker(BaseModel):
-    # Dev MAP = 0.37
+class TextProcessor(BaseModel):
+    def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
+        return x.raw_txt
+
+
+class Ranker(BaseModel):
+    def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
+        distances: np.ndarray = cosine_distances(vecs_q, vecs_s)
+        ranking: np.ndarray = np.argsort(distances, axis=-1)
+        return ranking
+
+
+class Retriever(BaseModel):
+    preproc: TextProcessor = TextProcessor()
     vectorizer: TfidfVectorizer = BM25Vectorizer()
+    ranker: Ranker = Ranker()
 
     class Config:
         arbitrary_types_allowed = True
@@ -88,22 +102,14 @@ class SimpleRanker(BaseModel):
         uids = deduplicate(uids)
         return Prediction(qid=data.questions[i_query].question_id, uids=uids)
 
-    def preprocess(self, x: Union[TxtAndKeywords, Statement]) -> str:
-        return x.raw_txt
-
-    def rank(self, vecs_q: np.ndarray, vecs_s: np.ndarray) -> np.ndarray:
-        distances: np.ndarray = cosine_distances(vecs_q, vecs_s)
-        ranking: np.ndarray = np.argsort(distances, axis=-1)
-        return ranking
-
     def run(self, data: Data) -> List[Prediction]:
-        statements: List[str] = [self.preprocess(s) for s in data.statements]
+        statements: List[str] = [self.preproc.run(s) for s in data.statements]
         queries: List[str] = [
-            self.preprocess(q.question) + " " + self.preprocess(q.answers[0])
+            self.preproc.run(q.question) + " " + self.preproc.run(q.answers[0])
             for q in data.questions
         ]
         self.vectorizer.fit(statements + queries)
-        ranking = self.rank(
+        ranking = self.ranker.run(
             self.vectorizer.transform(queries), self.vectorizer.transform(statements)
         )
         preds: List[Prediction] = []
@@ -112,14 +118,14 @@ class SimpleRanker(BaseModel):
         return preds
 
 
-class StageRanker(SimpleRanker):
+class StageRanker(Ranker):
     # Dev MAP: 0.3816
     num_per_stage: List[int] = [25, 100]
 
     def recurse(
         self,
-        vec_q: np.ndarray,
-        vecs_s: np.ndarray,
+        vec_q: csr_matrix,
+        vecs_s: csr_matrix,
         indices_s: np.ndarray,
         num_per_stage: List[int],
     ) -> List[int]:
@@ -152,7 +158,7 @@ class StageRanker(SimpleRanker):
             vec_q, vecs_s, indices_s, num_per_stage
         )
 
-    def rank(self, vecs_q: np.ndarray, vecs_s: np.ndarray) -> np.ndarray:
+    def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
         num_q = vecs_q.shape[0]
         num_s = vecs_s.shape[0]
         ranking = np.zeros(shape=(num_q, num_s), dtype=np.int)
@@ -163,12 +169,7 @@ class StageRanker(SimpleRanker):
         return ranking
 
 
-class Lemmatizer(BaseModel):
-    def run(self, text: str) -> str:
-        raise NotImplementedError
-
-
-class TextGraphsLemmatizer(Lemmatizer):
+class TextGraphsLemmatizer(TextProcessor):
     root: str = "/tmp/TextGraphLemmatizer"
     url: str = "https://github.com/chiayewken/sutd-materials/releases/download/v0.1.0/worldtree_textgraphs_2019_010920.zip"
     sep: str = "\t"
@@ -196,30 +197,68 @@ class TextGraphsLemmatizer(Lemmatizer):
             for word, lemma in df.values:
                 self.word_to_lemma[self.preprocess(word)] = self.preprocess(lemma)
 
-    def run(self, text: str) -> str:
+    def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
         self.load()
+        text = x.raw_txt
         return " ".join(self.word_to_lemma.get(w, w) for w in text.split())
 
 
-class LemmaRanker(SimpleRanker):
-    # Dev MAP:  0.4311
-    lemmatizer: Lemmatizer = TextGraphsLemmatizer()
+class SpacyProcessor(TextProcessor):
     nlp: English = spacy.load("en_core_web_sm", disable=["tagger", "ner", "parser"])
-    use_spacy: bool = False
 
-    def preprocess(self, x: Union[TxtAndKeywords, Statement]) -> str:
-        if self.use_spacy:  # Scores 0.4370 on dev
-            # Needs import spacy and spacy.load above
-            doc = self.nlp(x.raw_txt)
-            words = [token.lemma_ for token in doc]
-            # words = sorted(list(set(words))) # No change
-        else:  # Scores 0.4311 on dev
-            words = x.keywords
+    class Config:
+        arbitrary_types_allowed = True
 
-        # return self.lemmatizer.run(x.raw_txt)
-        # words = x.keywords
-        # words = ["".join([c for c in w if c.isalnum()]) for w in words]
+    def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
+        doc = self.nlp(x.raw_txt)
+        words = [token.lemma_ for token in doc]
         return " ".join(words)
+
+
+class KeywordProcessor(TextProcessor):
+    def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
+        return " ".join(x.keywords)
+
+
+class IterativeRanker(Ranker):
+    max_seq_len: int = 128
+    top_n: int = 1
+    scale: float = 1.25
+
+    def recurse(
+        self, vec_q: csr_matrix, vecs_s: csr_matrix, indices: List[int],
+    ):
+        if len(indices) >= self.max_seq_len:
+            return
+
+        distances: np.ndarray = cosine_distances(vec_q, vecs_s)[0]
+        assert distances.shape == (vecs_s.shape[0],)
+        rank = np.argsort(distances)
+
+        seen = set(indices)
+        count = 0
+        for i in rank:
+            if count == self.top_n:
+                break
+
+            if i not in seen:
+                vec_new = vecs_s[i] / (self.scale ** len(indices))
+                vec_q = vec_q.maximum(vec_new)
+                indices.append(i)
+                count += 1
+                self.recurse(vec_q, vecs_s, indices)
+
+    def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
+        ranking = super().run(vecs_q, vecs_s)
+        rank_old: np.ndarray
+        for i, rank_old in tqdm(enumerate(ranking), total=len(ranking)):
+            rank_new = []
+            self.recurse(vecs_q[i], vecs_s, rank_new)
+            assert rank_new
+            rank_new = rank_new + list(rank_old)
+            rank_new = deduplicate(rank_new)
+            ranking[i] = rank_new
+        return ranking
 
 
 class Scorer(BaseModel):
@@ -276,10 +315,18 @@ def main(data_split=SplitEnum.dev):
     data = Data(data_split=data_split)
     data.load()
     data.analyze()
-    # ranker = SimpleRanker()
-    # ranker = StageRanker()
-    ranker = LemmaRanker(use_spacy=False)
-    preds = ranker.run(data)
+
+    # retriever = Retriever()  # Dev MAP:  0.3788
+    # retriever = Retriever(preproc=SpacyProcessor())  # Dev MAP:  0.4378
+    # retriever = Retriever(preproc=KeywordProcessor())  # Dev MAP:  0.4311
+    # retriever = Retriever(
+    #     preproc=KeywordProcessor(), ranker=StageRanker()
+    # )  # Dev MAP:  0.4344
+    retriever = Retriever(
+        preproc=KeywordProcessor(), ranker=IterativeRanker()
+    )  # Dev MAP:  0.4505
+
+    preds = retriever.run(data)
     Scorer().run(data.path_gold, preds)
     ResultAnalyzer().run(data, preds)
 
