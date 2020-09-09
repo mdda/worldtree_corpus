@@ -579,13 +579,14 @@ def qa_display_relatedness(qa:QuestionAnswer, statements:List[Statement],
     )
 
     print('\n'+' '*5+' '.join( hdrs )+" : self, ext")
+    blank='  '
     for row_i,row_kw in enumerate(cols):
         row_out, slf, ext=[],0,0
         for col_j,col_kw in enumerate(cols):
             c = len(row_kw & col_kw)
-            s='  ' if c==0 else f'{c:2d}'
-            if blank_diagonal and row_i==col_j: s='  '
-            if blank_lowertri and row_i>col_j:  s='  '
+            s=blank if c==0 else f'{c:2d}'
+            if blank_diagonal and row_i==col_j: s=blank
+            if blank_lowertri and row_i>col_j:  s=blank
             row_out.append(s)
             if row_i==col_j:
                 slf+=c
