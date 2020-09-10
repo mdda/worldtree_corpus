@@ -629,7 +629,17 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
     # Now got through the questions, and chart out the 'hits', 
     #   And analyse the 'misses'
 
-    sc_tot, sc_trunc_tot=0.,0.
+    statement_from_uid = { s.uid:s for s in statements }
+    def statement_desc(s):
+        meta=''
+        #if 'that something' in s.raw_txt or 'that object' in s.raw_txt:
+        if 'that' in s.raw_txt:
+            meta='*'
+            #print(s.raw_txt)
+        #if s.table=='KINDOF':
+        return meta+s.table
+
+    sc_tot, sc_trunc_tot, sc_max_tot=0.,0.,0.
     for qa in qanda:
         gold=set(e.uid for e in qa.explanation_gold)
         p=preds[qa.question_id]
@@ -639,20 +649,33 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         score_trunc = silent_average_precision_score(list(gold), p[:limit])
         sc_trunc_tot+=score_trunc
 
-        hits=[]
+        hits, found, remaining=[], [], gold.copy()
         for i in range(limit):
             if p[i] in gold:
                 hits.append('X')
-                gold.remove(p[i])
+                remaining.remove(p[i])
+                found.append(p[i])
             else:
                 hits.append('.')
         miss=[]
-        for j in gold:
+        for j in remaining:
             miss.append(p.index(j))
-        misses = ','.join(f"{m:d}" for m in sorted(miss))
-        #print(f"{''.join(hits)} : {'miss '*len(gold)} " )
-        print(f"{score:.4f} {score_trunc:.4f} : {''.join(hits)} : {misses}")
-    print(f"{sc_tot/len(qanda):.4f} {sc_trunc_tot/len(qanda):.4f}")
+        miss=sorted(miss)
+        misses = ','.join(f"{m:d}" for m in miss)
+
+        #score_max = silent_average_precision_score(list(gold), list(gold)[:])
+        score_max = ( len(gold)-len(remaining) )/len(gold)
+        sc_max_tot += score_max
+
+        print(f"{score:.4f} {score_trunc:.4f} {score_max:.4f} : {''.join(hits)} : {misses}")
+        s_table=['[']
+        for uid in found:  # in order they were found
+            s_table.append( statement_desc( statement_from_uid[uid] ) )
+        s_table.append(']')
+        for j in miss:   # in order they were missed
+            s_table.append( statement_desc( statement_from_uid[p[j]] ) )
+        print("    "+' '.join(s_table))
+    print(f"{sc_tot/len(qanda):.4f} {sc_trunc_tot/len(qanda):.4f} {sc_max_tot/len(qanda):.4f}")
     
 if '__main__' == __name__:
     if False:

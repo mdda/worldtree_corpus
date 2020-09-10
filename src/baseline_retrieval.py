@@ -327,13 +327,15 @@ def main(data_split=SplitEnum.dev):
     # retriever = Retriever(
     #     preproc=KeywordProcessor(), ranker=StageRanker()
     # )  # Dev MAP:  0.4354, Dev recall@512=0.9084
-    # retriever = Retriever(
-    #     preproc=KeywordProcessor(), ranker=IterativeRanker()
-    # )  # Dev MAP:  0.4505, Dev recall@512=0.8880
-    retriever = Retriever(
-        preproc=KeywordProcessor(),
-        ranker=StageRanker(num_per_stage=[16, 32, 64, 128], scale=1.5),
-    )  # Dev MAP:  0.4368, Dev recall@512=0.9177
+    if False:
+        retriever = Retriever(
+            preproc=KeywordProcessor(), ranker=IterativeRanker()
+        )  # Dev MAP:  0.4505, Dev recall@512=0.8880
+    if True:
+        retriever = Retriever(
+            preproc=KeywordProcessor(),
+            ranker=StageRanker(num_per_stage=[16, 32, 64, 128], scale=1.5),
+        )  # Dev MAP:  0.4368, Dev recall@512=0.9177
 
     preds = retriever.run(data)
     Scorer().run(data.path_gold, preds)
