@@ -741,13 +741,15 @@ if '__main__' == __name__:
     DONE : Discover that compound keywords perform worse for TF-IDF : backtrack on that idea (move to extract_keywords_complex)
     DONE : See whether Keywords need more relabelling, etc ... 
 
-    Ken's recall stats tell us where outlier statements fall : What are they?
-    Hypothesis : Outlier statements are meta statements
-    Write meta-statement classifier, and add a tag/market to add as a keyword
-
+    DONE : Ken's recall stats tell us where outlier statements fall : What are they?
+    DONE : Hypothesis : Outlier statements are meta statements :: NOT PROVEN
+    NOPE : Write meta-statement classifier, and add a tag/market to add as a keyword
 
     Create Q&A dataset fancier preproc : MoveStatmentsFromQuestion
     Create Q&A dataset fancier preproc : MoveAssumptionsFromQuestionToAnswer
+
+    Have a look at how to do graph linkage directly
+
     Create Q&A dataset fancier preproc : ResolveExplanationsToSpecifics
 
     qa_raw = QuestionAnswer()
