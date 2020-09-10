@@ -1,4 +1,4 @@
-import os
+import os, sys
 import warnings
 
 from pydantic import BaseModel
@@ -594,7 +594,32 @@ def qa_display_relatedness(qa:QuestionAnswer, statements:List[Statement],
                 ext+=c
         print(f"{hdrs[row_i]:>3s} :"+' '.join(row_out)+f" :  {slf:3d}, {ext:3d}")
 
+def analyse_outliers(limit, statements, qanda, predictions_file):
+    preds=dict() # qa_id -> [statements in order]
+    with open(predictions_file, 'rt') as f:
+        for l in f.readlines():
+            qid, uid = l.strip().split('\t')
+            if qid not in pred: pred[qid]=[]
+            pred[qid].append(uid)
+    
+    # Now got through the questions, and 
+    
 if '__main__' == __name__:
+    if True:
+        sys.path.append("../tg2020task")
+        import evaluate
+        for pred in [
+                "abcdefghij","abcdefghi",
+                "1abcdefghij","12abcdefghij", "123abcdefghij", "1234abcdefghij", "12345abcdefghij", "123456abcdefghij", "1234567abcdefghij", "12345678abcdefghij", "123456789abcdefghij", "1234567890abcdefghij",
+                "1a2b3c4d5e6f7g8h9i0j", "a2b3c4d5e6f7g8h9i0j1",
+            ]:
+                score = evaluate.average_precision_score(
+                    list("abcdefghij"), 
+                    list(pred), 
+                )
+                print(f"{pred:>22s} {score:.4f}")
+        exit(0)
+
     statements = load_statements()
     #print(len(statements))  # 13K in total (includes COMBOs)
     #print(statements[123])
@@ -625,11 +650,14 @@ if '__main__' == __name__:
     #qanda_train = load_qanda('train') # 1.8MB
     qanda_dev   = load_qanda('dev')   # 400k in 496 lines
     #qanda_test  = load_qanda('test')  # 800k
+    
+    if False:
+        for i in [411]:  # Good examples : 
+            qa_display_keywords(qanda_dev[i], statements=statements)
+            qa_display_relatedness(qanda_dev[i], statements=statements)
 
-    #qanda_dev = qanda_preprocess_keywords(qanda_dev, keyword_counts=keyword_counts)
-    for i in [411]:  # Good examples : 
-        qa_display_keywords(qanda_dev[i], statements=statements)
-        qa_display_relatedness(qanda_dev[i], statements=statements)
+    #analyse_outliers(64, statements, qanda_dev, '/tmp/scorer/predict.txt')
+
 
     """
     # TODO:
@@ -644,10 +672,16 @@ if '__main__' == __name__:
     DONE : Read Q&A datasets (extract questions, and sort answers - correct is [0])
     DONE : Do Keywords preproc on Q&A datasets
 
-    Table of Keyword counts for QA :: KW[i] : in_q : in_a : in_ex : ...
-    Matrix of Keyword overlap for QA :: (q,a,ex1,ex2,...,exN)**2
+    DONE : Table of Keyword counts for QA :: KW[i] : in_q : in_a : in_ex : ...
+    DONE : Matrix of Keyword overlap for QA :: (q,a,ex1,ex2,...,exN)**2
 
-    See whether Keywords need more relabelling, etc
+    DONE : Discover that compound keywords perform worse for TF-IDF : backtrack on that idea (move to extract_keywords_complex)
+    DONE : See whether Keywords need more relabelling, etc ... 
+
+    Ken's recall stats tell us where outlier statements fall : What are they?
+    Hypothesis : Outlier statements are meta statements
+    Write meta-statement classifier, and add a tag/market to add as a keyword
+
 
     Create Q&A dataset fancier preproc : MoveStatmentsFromQuestion
     Create Q&A dataset fancier preproc : MoveAssumptionsFromQuestionToAnswer
