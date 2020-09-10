@@ -695,8 +695,8 @@ if '__main__' == __name__:
             qa_display_keywords(qanda_dev[i], statements=statements)
             qa_display_relatedness(qanda_dev[i], statements=statements)
 
-    analyse_outliers(32, statements, qanda_dev, '/tmp/scorer/predict.txt')
-    #analyse_outliers(64, statements, qanda_dev, '/tmp/scorer/predict.txt')
+    #analyse_outliers(32, statements, qanda_dev, '/tmp/scorer/predict.txt')
+    analyse_outliers(64, statements, qanda_dev, '/tmp/scorer/predict.txt')
 
 
     """
