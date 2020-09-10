@@ -594,31 +594,70 @@ def qa_display_relatedness(qa:QuestionAnswer, statements:List[Statement],
                 ext+=c
         print(f"{hdrs[row_i]:>3s} :"+' '.join(row_out)+f" :  {slf:3d}, {ext:3d}")
 
-def analyse_outliers(limit, statements, qanda, predictions_file):
+def silent_average_precision_score(gold: List[str], pred: List[str]) -> float:
+    if not gold or not pred:  return 0.
+    correct, ap, true = 0, 0., set(gold)
+    for rank, element in enumerate(pred):
+        if element in true:
+            correct += 1
+            ap += correct / (rank + 1.)
+            true.remove(element)
+    return ap / len(gold)
+
+def run_average_precision_sanity_check():
+    sys.path.append("../tg2020task")
+    import evaluate
+    preds=[
+        "abcdefghij",
+        "1abcdefghij","12abcdefghij", "123abcdefghij", "1234abcdefghij", "12345abcdefghij", "123456abcdefghij", "1234567abcdefghij", "12345678abcdefghij", "123456789abcdefghij", "1234567890abcdefghij",
+        "1a2b3c4d5e6f7g8h9i0j", "a2b3c4d5e6f7g8h9i0j1",
+        "abcdefghi","abcdefgh","abcdefg","abcdef",
+    ]
+    for pred in preds:
+            score = evaluate.average_precision_score(list(preds[0]), list(pred) )
+            score_silent = silent_average_precision_score(list(preds[0]), list(pred) )
+            print(f"{pred:>22s} {score:.4f} {score_silent:.4f}")
+
+def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionAnswer], predictions_file:str):
     preds=dict() # qa_id -> [statements in order]
     with open(predictions_file, 'rt') as f:
         for l in f.readlines():
             qid, uid = l.strip().split('\t')
-            if qid not in pred: pred[qid]=[]
-            pred[qid].append(uid)
+            if qid not in preds: preds[qid]=[]
+            preds[qid].append(uid)
     
-    # Now got through the questions, and 
+    # Now got through the questions, and chart out the 'hits', 
+    #   And analyse the 'misses'
+
+    sc_tot, sc_trunc_tot=0.,0.
+    for qa in qanda:
+        gold=set(e.uid for e in qa.explanation_gold)
+        p=preds[qa.question_id]
+
+        score = silent_average_precision_score(list(gold), p)
+        sc_tot+=score
+        score_trunc = silent_average_precision_score(list(gold), p[:limit])
+        sc_trunc_tot+=score_trunc
+
+        hits=[]
+        for i in range(limit):
+            if p[i] in gold:
+                hits.append('X')
+                gold.remove(p[i])
+            else:
+                hits.append('.')
+        miss=[]
+        for j in gold:
+            miss.append(p.index(j))
+        misses = ','.join(f"{m:d}" for m in sorted(miss))
+        #print(f"{''.join(hits)} : {'miss '*len(gold)} " )
+        print(f"{score:.4f} {score_trunc:.4f} : {''.join(hits)} : {misses}")
+    print(f"{sc_tot/len(qanda):.4f} {sc_trunc_tot/len(qanda):.4f}")
     
 if '__main__' == __name__:
-    if True:
-        sys.path.append("../tg2020task")
-        import evaluate
-        for pred in [
-                "abcdefghij","abcdefghi",
-                "1abcdefghij","12abcdefghij", "123abcdefghij", "1234abcdefghij", "12345abcdefghij", "123456abcdefghij", "1234567abcdefghij", "12345678abcdefghij", "123456789abcdefghij", "1234567890abcdefghij",
-                "1a2b3c4d5e6f7g8h9i0j", "a2b3c4d5e6f7g8h9i0j1",
-            ]:
-                score = evaluate.average_precision_score(
-                    list("abcdefghij"), 
-                    list(pred), 
-                )
-                print(f"{pred:>22s} {score:.4f}")
-        exit(0)
+    if False:
+        run_average_precision_sanity_check()
+        #exit(0)
 
     statements = load_statements()
     #print(len(statements))  # 13K in total (includes COMBOs)
@@ -656,6 +695,7 @@ if '__main__' == __name__:
             qa_display_keywords(qanda_dev[i], statements=statements)
             qa_display_relatedness(qanda_dev[i], statements=statements)
 
+    analyse_outliers(32, statements, qanda_dev, '/tmp/scorer/predict.txt')
     #analyse_outliers(64, statements, qanda_dev, '/tmp/scorer/predict.txt')
 
 
