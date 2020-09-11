@@ -356,6 +356,7 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
             #if 'singleXcelled' in raw_txt: exit(0)
             #if 'single+celled' in raw_txt: exit(0)
             #if 'single' in raw_txt: exit(0)
+            #if uid=='1a4b-82df-0613-5268': exit(0)
 
         #if row_i>5: break
     return statements
@@ -707,7 +708,7 @@ if '__main__' == __name__:
         run_average_precision_sanity_check()
         #exit(0)
 
-    statements = load_statements() #regenerate=True)
+    statements = load_statements()#regenerate=True)
     #print(len(statements))  # 13K in total (includes COMBOs)
     #print(statements[123])
 
