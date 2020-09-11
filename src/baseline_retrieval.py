@@ -16,7 +16,13 @@ from torchvision.datasets.utils import download_and_extract_archive
 from tqdm import tqdm
 
 from bm25 import BM25Vectorizer
-from dataset import Statement, QuestionAnswer, TxtAndKeywords
+from dataset import (
+    Statement,
+    QuestionAnswer,
+    TxtAndKeywords,
+    load_qanda,
+    load_statements,
+)
 from extra_data import SplitEnum
 
 sys.path.append("../tg2020task")
@@ -40,6 +46,7 @@ class Data(BaseModel):
     data_split: str = SplitEnum.dev
     statements: Optional[List[Statement]]
     questions: Optional[List[QuestionAnswer]]
+    uid_to_statements: Optional[Dict[str, List[Statement]]]
 
     @property
     def path_gold(self) -> Path:
@@ -56,10 +63,12 @@ class Data(BaseModel):
         return records
 
     def load(self):
-        path = Path(self.root) / "statements.jsonl"
-        self.statements = [Statement(**r) for r in self.load_jsonl(path)]
-        path = Path(self.root) / f"questions.{self.data_split}.jsonl"
-        self.questions = [QuestionAnswer(**r) for r in self.load_jsonl(path)]
+        self.statements = load_statements()
+        self.questions = load_qanda(self.data_split)
+
+        self.uid_to_statements = {}
+        for s in self.statements:
+            self.uid_to_statements.setdefault(s.uid_base, []).append(s)
 
     def analyze(self):
         info = dict(statements=len(self.statements), questions=len(self.questions))
@@ -102,16 +111,20 @@ class Retriever(BaseModel):
         uids = deduplicate(uids)
         return Prediction(qid=data.questions[i_query].question_id, uids=uids)
 
-    def run(self, data: Data) -> List[Prediction]:
-        statements: List[str] = [self.preproc.run(s) for s in data.statements]
-        queries: List[str] = [
-            self.preproc.run(q.question) + " " + self.preproc.run(q.answers[0])
-            for q in data.questions
-        ]
+    def make_query(self, q: QuestionAnswer, data: Data) -> str:
+        assert data
+        return self.preproc.run(q.question) + " " + self.preproc.run(q.answers[0])
+
+    def rank(self, queries: List[str], statements: List[str]) -> np.ndarray:
         self.vectorizer.fit(statements + queries)
-        ranking = self.ranker.run(
+        return self.ranker.run(
             self.vectorizer.transform(queries), self.vectorizer.transform(statements)
         )
+
+    def run(self, data: Data) -> List[Prediction]:
+        statements: List[str] = [self.preproc.run(s) for s in data.statements]
+        queries: List[str] = [self.make_query(q, data) for q in data.questions]
+        ranking = self.rank(queries, statements)
         preds: List[Prediction] = []
         for i in tqdm(range(len(ranking))):
             preds.append(self.make_pred(i, list(ranking[i]), data))
