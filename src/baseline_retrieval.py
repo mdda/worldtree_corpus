@@ -1,28 +1,32 @@
-import json
 import sys
 from pathlib import Path
+
 from typing import List, Optional, Union, Dict
+from pydantic import BaseModel
+
+import json
 
 import numpy as np
 import pandas as pd
-import spacy
-from fire import Fire
-from pydantic import BaseModel
+
 from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
+
+import spacy
 from spacy.lang.en import English
-from torchvision.datasets.utils import download_and_extract_archive
+
+from fire import Fire
 from tqdm import tqdm
+
+from torchvision.datasets.utils import download_and_extract_archive
 
 from bm25 import BM25Vectorizer
 from dataset import Statement, QuestionAnswer, TxtAndKeywords
 from extra_data import SplitEnum
 
 sys.path.append("../tg2020task")
-
 import evaluate
-
 
 def deduplicate(items: list) -> list:
     seen = set()
@@ -279,15 +283,19 @@ class Scorer(BaseModel):
 
         gold = evaluate.load_gold(str(path_gold))
         pred = evaluate.load_pred(str(path_predict))
+        #print(len(gold), len(pred))  # 410 496
 
         qid2score = {}
-
         def _callback(qid, score):
             qid2score[qid] = score
 
         mean_ap = evaluate.mean_average_precision_score(gold, pred, callback=_callback)
         # print("qid2score:", qid2score)
         print("MAP: ", mean_ap)
+
+        with open("/tmp/scorer/per_q.json", "wt") as f:
+            json.dump(qid2score, f)
+
         return qid2score
 
 
