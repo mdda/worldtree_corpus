@@ -25,7 +25,7 @@ from extra_data import (
 assert MSMarcoExample is not None  # Needed for pickle.load in MSMarcoDataset
 
 
-class HierarchicalSentenceClassifier(PreTrainedModel):
+class HierarchicalTextClassifier(PreTrainedModel):
     def _forward_unimplemented(self, *args: Any) -> None:
         pass
 
@@ -72,7 +72,7 @@ def get_model(
     model_sents = AutoModelForTokenClassification.from_pretrained(
         name, num_labels=num_labels
     )
-    model = HierarchicalSentenceClassifier(model_tokens, model_sents)
+    model = HierarchicalTextClassifier(model_tokens, model_sents)
     print(list(map(type, [tokenizer, model_tokens, model_sents, model_sents.config])))
     return tokenizer, model
 
