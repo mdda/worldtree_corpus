@@ -55,7 +55,7 @@ class QuestionAnswer(BaseModel):
     # Becomes part of initial explanation :
     question_statements: List[Statement] = [] 
 
-
+    flags:str="success"
 
 # Hard-coded whitelist (!)
 UNUSED_whitelist_words="""
@@ -125,12 +125,22 @@ def fix_keyword_set(kws):
 #   that spacy has processed from a doc
 def extract_keywords(spacy_tokens, require_keywords=True) -> Keywords:
     found_spans = []
+    # X|INTJ are here because they pick up useful fragments (not exactly correctly)
+    # 'something'=PRON ... to be considered
+    pos_set = set('NOUN|PROPN|ADJ|VERB|ADV|NUM|X|INTJ'.split('|'))
     for t in spacy_tokens:
         pos = t.pos_
-        if pos in 'NOUN|PROPN|ADJ|VERB|ADV':
+        #if pos=='X':
+        #    print(f"DEBUG:X:{t.text}", spacy_tokens)
+        if pos in pos_set: # or t.lemma_=='something':
             found_spans.append([t])
             
-    if len(found_spans)==0 and require_keywords:
+    if len(spacy_tokens)>0 and len(found_spans)==0 and require_keywords:
+        if False:
+            s_arr=[]
+            for t in spacy_tokens:
+                s_arr.append(f"{t.pos_}:{t.text}={t.lemma_}")
+            print(f"DEBUG:no-keywords:{','.join(s_arr)}")
         if len(spacy_tokens)==1:
             # There's only one word in the span : Use it!
             found_spans.append([spacy_tokens[0]])
@@ -346,6 +356,7 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
             #if 'singleXcelled' in raw_txt: exit(0)
             #if 'single+celled' in raw_txt: exit(0)
             #if 'single' in raw_txt: exit(0)
+            #if uid=='1a4b-82df-0613-5268': exit(0)
 
         #if row_i>5: break
     return statements
@@ -411,11 +422,11 @@ def read_qanda_file(version:str) -> List[QuestionAnswer]:
                 rows.append(row)
     print(f"Read {len(rows)} questions from {version}")
 
-    cols=[ header.index(col) for col in "QuestionID,question,AnswerKey,explanation".split(',') ]
+    cols=[ header.index(col) for col in "QuestionID,question,AnswerKey,explanation,flags".split(',') ]
 
     qa_arr=[]
     for row in rows:
-        q_id, q_txt, a_label, ex_gold = [row[col] for col in cols]
+        q_id, q_txt, a_label, ex_gold, flags = [row[col] for col in cols]
 
         multi=re.split(r'\s*(\([A-F1-6]\))\s*', q_txt)
         #print(multi) # question itself is in [0]
@@ -454,6 +465,7 @@ def read_qanda_file(version:str) -> List[QuestionAnswer]:
                 question= TxtAndKeywords(raw_txt=multi[0]),
                 answers = answers,
                 explanation_gold = explanations,
+                flags = flags.lower(),
             )
         qa_arr.append( qa )
 
@@ -625,12 +637,33 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
             qid, uid = l.strip().split('\t')
             if qid not in preds: preds[qid]=[]
             preds[qid].append(uid)
-    
+
+    # Check with competition scorer results
+    #with open("/tmp/scorer/per_q.json", "rt") as f:
+    #    qid2score = json.load(f)
+    #print(len(qid2score), len(preds), len(qanda)); return # 410 496 496
+
+    def evaluate_example(qa):
+        #return True
+        # Only keep questions where flags is in 'success' or 'ready'
+        return qa.flags in "success|ready".split('|')
+
+    statement_from_uid = { s.uid:s for s in statements }
+    def statement_desc(s):
+        meta=''
+        #if 'that something' in s.raw_txt or 'that object' in s.raw_txt:
+        if 'that' in s.raw_txt:
+            meta='*'
+            #print(s.raw_txt)
+        #if s.table=='KINDOF':
+        return meta+s.table
+
     # Now got through the questions, and chart out the 'hits', 
     #   And analyse the 'misses'
-
-    sc_tot, sc_trunc_tot=0.,0.
+    cnt, sc_tot, sc_trunc_tot, sc_max_tot=0, 0.,0.,0.
     for qa in qanda:
+        if not evaluate_example(qa): continue
+        cnt+=1
         gold=set(e.uid for e in qa.explanation_gold)
         p=preds[qa.question_id]
 
@@ -639,27 +672,43 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         score_trunc = silent_average_precision_score(list(gold), p[:limit])
         sc_trunc_tot+=score_trunc
 
-        hits=[]
+        hits, found, remaining=[], [], gold.copy()
         for i in range(limit):
             if p[i] in gold:
                 hits.append('X')
-                gold.remove(p[i])
+                remaining.remove(p[i])
+                found.append(p[i])
             else:
                 hits.append('.')
         miss=[]
-        for j in gold:
+        for j in remaining:
             miss.append(p.index(j))
-        misses = ','.join(f"{m:d}" for m in sorted(miss))
-        #print(f"{''.join(hits)} : {'miss '*len(gold)} " )
-        print(f"{score:.4f} {score_trunc:.4f} : {''.join(hits)} : {misses}")
-    print(f"{sc_tot/len(qanda):.4f} {sc_trunc_tot/len(qanda):.4f}")
+        miss=sorted(miss)
+        misses = ','.join(f"{m:d}" for m in miss)
+
+        #score_max = silent_average_precision_score(list(gold), list(gold)[:])
+        score_max = ( len(gold)-len(remaining) )/len(gold)
+        sc_max_tot += score_max
+
+        print(f"{score:.4f} {score_trunc:.4f} {score_max:.4f} : {''.join(hits)} : {misses}")
+        #if score!=qid2score.get(qa.question_id.lower(), -1):
+        #    print(f"{qid2score.get(qa.question_id.lower(), -1):.4f} - {qa.question_id:s}")
+
+        s_table=['[']
+        for uid in found:  # in order they were found
+            s_table.append( statement_desc( statement_from_uid[uid] ) )
+        s_table.append(']')
+        for j in miss:   # in order they were missed
+            s_table.append( statement_desc( statement_from_uid[p[j]] ) )
+        print("    "+' '.join(s_table))
+    print(f"{sc_tot/cnt:.4f} {sc_trunc_tot/cnt:.4f} {sc_max_tot/cnt:.4f}")
     
 if '__main__' == __name__:
     if False:
         run_average_precision_sanity_check()
         #exit(0)
 
-    statements = load_statements()
+    statements = load_statements()#regenerate=True)
     #print(len(statements))  # 13K in total (includes COMBOs)
     #print(statements[123])
 
@@ -686,9 +735,9 @@ if '__main__' == __name__:
     # Parsing QuestionAnswers requires:
     #   ?? keywords (via keyword_counts) : for simple string matching
 
-    #qanda_train = load_qanda('train') # 1.8MB
-    qanda_dev   = load_qanda('dev')   # 400k in 496 lines
-    #qanda_test  = load_qanda('test')  # 800k
+    #qanda_train = load_qanda('train')#, regenerate=True) # 1.8MB
+    qanda_dev   = load_qanda('dev')#, regenerate=True)   # 400k in 496 lines
+    #qanda_test  = load_qanda('test')#, regenerate=True)  # 800k
     
     if False:
         for i in [411]:  # Good examples : 
@@ -709,6 +758,9 @@ if '__main__' == __name__:
     DONE : Look for badly transferred keywords ({'red_light'} should be {'red', 'light'}) and fix (exceptions file into repo)
     More fix-ups for keyword relabelling (ongoing)
 
+    DONE : Check on single-word lemmatization fall-back (particularly for questions) - what POS are they (for example)
+    DONE : Fix discrepancy between evaluate.py aggregate score and here
+
     DONE : Read Q&A datasets (extract questions, and sort answers - correct is [0])
     DONE : Do Keywords preproc on Q&A datasets
 
@@ -718,13 +770,16 @@ if '__main__' == __name__:
     DONE : Discover that compound keywords perform worse for TF-IDF : backtrack on that idea (move to extract_keywords_complex)
     DONE : See whether Keywords need more relabelling, etc ... 
 
-    Ken's recall stats tell us where outlier statements fall : What are they?
-    Hypothesis : Outlier statements are meta statements
-    Write meta-statement classifier, and add a tag/market to add as a keyword
+    DONE : Ken's recall stats tell us where outlier statements fall : What are they?
+    DONE : Hypothesis : Outlier statements are meta statements :: NOT PROVEN
+    NOPE : Write meta-statement classifier, and add a tag/market to add as a keyword
+
+    Have a look at how to do graph linkage directly
 
 
     Create Q&A dataset fancier preproc : MoveStatmentsFromQuestion
     Create Q&A dataset fancier preproc : MoveAssumptionsFromQuestionToAnswer
+
     Create Q&A dataset fancier preproc : ResolveExplanationsToSpecifics
 
     qa_raw = QuestionAnswer()
