@@ -1,25 +1,21 @@
+import json
 import sys
 from pathlib import Path
-
 from typing import List, Optional, Union, Dict
-from pydantic import BaseModel
-
-import json
 
 import numpy as np
 import pandas as pd
-
+import spacy
+from fire import Fire
+from pydantic import BaseModel
 from scipy.sparse import csr_matrix
+from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
-
-import spacy
+from sklearn.pipeline import Pipeline
 from spacy.lang.en import English
-
-from fire import Fire
-from tqdm import tqdm
-
 from torchvision.datasets.utils import download_and_extract_archive
+from tqdm import tqdm
 
 from bm25 import BM25Vectorizer
 from dataset import (
@@ -33,6 +29,7 @@ from extra_data import SplitEnum
 
 sys.path.append("../tg2020task")
 import evaluate
+
 
 def deduplicate(items: list) -> list:
     seen = set()
@@ -104,7 +101,7 @@ class Ranker(BaseModel):
 
 class Retriever(BaseModel):
     preproc: TextProcessor = TextProcessor()
-    vectorizer: TfidfVectorizer = BM25Vectorizer()
+    vectorizer: Union[TfidfVectorizer, Pipeline] = BM25Vectorizer()
     ranker: Ranker = Ranker()
 
     class Config:
@@ -166,7 +163,10 @@ class StageRanker(Ranker):
         indices_keep = indices_s[rank][:num_keep]
         vec_new = np.max(vecs_keep, axis=0)
         vec_new = vec_new / (self.scale ** num_accum)
-        vec_q = vec_q.maximum(vec_new)
+        if isinstance(vec_q, csr_matrix):
+            vec_q = vec_q.maximum(vec_new)
+        else:
+            vec_q = np.maximum(vec_q, vec_new)
         num_accum += num_keep
 
         if num_next == 0:
@@ -186,7 +186,7 @@ class StageRanker(Ranker):
         ranking = np.zeros(shape=(num_q, num_s), dtype=np.int)
         for i in tqdm(range(num_q)):
             ranking[i] = self.recurse(
-                vecs_q[i], vecs_s, np.arange(num_s), list(self.num_per_stage)
+                vecs_q[[i]], vecs_s, np.arange(num_s), list(self.num_per_stage)
             )
         return ranking
 
@@ -265,7 +265,10 @@ class IterativeRanker(Ranker):
 
             if i not in seen:
                 vec_new = vecs_s[i] / (self.scale ** len(indices))
-                vec_q = vec_q.maximum(vec_new)
+                if isinstance(vec_q, csr_matrix):
+                    vec_q = vec_q.maximum(vec_new)
+                else:
+                    vec_q = np.maximum(vec_q, vec_new)
                 indices.append(i)
                 count += 1
                 self.recurse(vec_q, vecs_s, indices)
@@ -275,7 +278,7 @@ class IterativeRanker(Ranker):
         rank_old: np.ndarray
         for i, rank_old in tqdm(enumerate(ranking), total=len(ranking)):
             rank_new = []
-            self.recurse(vecs_q[i], vecs_s, rank_new)
+            self.recurse(vecs_q[[i]], vecs_s, rank_new)
             assert rank_new
             rank_new = rank_new + list(rank_old)
             rank_new = deduplicate(rank_new)
@@ -296,9 +299,10 @@ class Scorer(BaseModel):
 
         gold = evaluate.load_gold(str(path_gold))
         pred = evaluate.load_pred(str(path_predict))
-        #print(len(gold), len(pred))  # 410 496
+        # print(len(gold), len(pred))  # 410 496
 
         qid2score = {}
+
         def _callback(qid, score):
             qid2score[qid] = score
 
@@ -315,9 +319,8 @@ class Scorer(BaseModel):
 class ResultAnalyzer(BaseModel):
     thresholds: List[int] = [32, 64, 128, 256, 512, 1024]
 
-    def run_threshold(
-        self, data: Data, preds: List[Prediction], threshold: int
-    ) -> float:
+    @staticmethod
+    def run_threshold(data: Data, preds: List[Prediction], threshold: int) -> float:
         assert len(data.questions) == len(preds)
         scores = []
 
@@ -325,9 +328,12 @@ class ResultAnalyzer(BaseModel):
             assert q.question_id == p.qid
             predicted = set(p.uids[:threshold])
             gold = set([e.uid for e in q.explanation_gold])
-            true_pos = predicted.intersection(gold)
-            recall = len(true_pos) / len(gold)
-            scores.append(recall)
+            if gold:
+                true_pos = predicted.intersection(gold)
+                recall = len(true_pos) / len(gold)
+                scores.append(recall)
+            else:
+                print(dict(question_no_labels=q.question_id))
 
         return sum(scores) / len(scores)
 
@@ -335,6 +341,23 @@ class ResultAnalyzer(BaseModel):
         for threshold in self.thresholds:
             recall = self.run_threshold(data, preds, threshold)
             print(dict(threshold=threshold, recall=recall))
+
+
+class TruncatedSVDVectorizer(TfidfVectorizer):
+    def __init__(self, vec: TfidfVectorizer, n_components: int, random_state=42):
+        super().__init__()
+        self.vec = vec
+        self.svd = TruncatedSVD(n_components=n_components, random_state=random_state)
+
+    def fit(self, texts: List[str], y=None):
+        self.vec.fit(texts)
+        x = self.vec.transform(texts)
+        self.svd.fit(x)
+
+    def transform(self, texts: List[str], copy="deprecated"):
+        x = self.vec.transform(texts)
+        x = self.svd.transform(x)
+        return x
 
 
 def main(data_split=SplitEnum.dev):
@@ -357,6 +380,12 @@ def main(data_split=SplitEnum.dev):
             preproc=KeywordProcessor(),
             ranker=StageRanker(num_per_stage=[16, 32, 64, 128], scale=1.5),
         )  # Dev MAP:  0.4368, Dev recall@512=0.9177
+
+        # Maybe this dense vectorizer can make useful features for deep learning methods
+        # retriever = Retriever(
+        #     vectorizer=TruncatedSVDVectorizer(BM25Vectorizer(), n_components=768),
+        #     preproc=KeywordProcessor(),
+        # )  # Dev MAP:  0.3596, Dev recall@512=0.8684
 
     preds = retriever.run(data)
     Scorer().run(data.path_gold, preds)

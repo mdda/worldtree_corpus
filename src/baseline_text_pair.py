@@ -35,11 +35,11 @@ TextPairInput = Tuple[BatchEncoding, BatchEncoding]
 TextPairBatch = Tuple[TextPairInput, Tensor]
 
 
-class TextPairClassifyConfig(BaseModel):
+class TextPairConfig(BaseModel):
     bs: int = 32
     model_name: str = "distilbert-base-uncased"
     num_labels: int = 2
-    p_dropout: float = 0.1
+    p_dropout: float = 0.2
     learning_rate: float = 5e-5
     weight_decay: float = 0.0
     adam_beta1: float = 0.9
@@ -71,7 +71,7 @@ def get_device_kwargs() -> Dict[str, int]:
     return kwargs
 
 
-class TextPairClassifyNet(nn.Module):
+class TextPairNet(nn.Module):
     def __init__(self, model: PreTrainedModel, num_labels: int, p_dropout: float):
         super().__init__()
         self.model = model
@@ -80,7 +80,7 @@ class TextPairClassifyNet(nn.Module):
         # nn.Bilinear is really expensive! dim**3 -> 1.7 GB bigger checkpoint
         self.linear = nn.Linear(dim * 2, dim)
         self.dropout = nn.Dropout(p_dropout)
-        self.classifier = nn.Linear(dim, num_labels)
+        self.final = nn.Linear(dim, num_labels)
         self.activation = nn.ReLU()
 
     def _forward_unimplemented(self, *args: Any) -> None:
@@ -103,22 +103,22 @@ class TextPairClassifyNet(nn.Module):
         assert x.shape == a.shape
         return x
 
-    def run_classify(self, x: Tensor) -> Tensor:
+    def run_head(self, x: Tensor) -> Tensor:
         x = self.activation(x)
         x = self.dropout(x)
-        x = self.classifier(x)
+        x = self.final(x)
         return x
 
     def forward(self, inputs: TextPairInput) -> Tensor:
         a = self.embed_texts(inputs[0])
         b = self.embed_texts(inputs[1])
         x = self.fuse_embeds(a, b)
-        x = self.run_classify(x)
+        x = self.run_head(x)
         return x
 
 
 def test_net(
-    inputs: TextPairInput = None, config=TextPairClassifyConfig(), max_seq_len=128,
+    inputs: TextPairInput = None, config=TextPairConfig(), max_seq_len=128,
 ):
     if inputs is None:
         x = torch.ones(config.bs, max_seq_len, dtype=torch.long)
@@ -126,7 +126,7 @@ def test_net(
         b = BatchEncoding(data=dict(input_ids=x, attention_mask=x))
         inputs = (a, b)
 
-    model = TextPairClassifyNet(
+    model = TextPairNet(
         model=AutoModel.from_pretrained(config.model_name),
         num_labels=config.num_labels,
         p_dropout=config.p_dropout,
@@ -158,7 +158,7 @@ class TextPairExample(BaseModel):
     label: bool
 
 
-class TextPairClassifyDataset(Dataset):
+class TextPairDataset(Dataset):
     def __getitem__(self, i: int) -> TextPairExample:
         raise NotImplementedError
 
@@ -171,7 +171,7 @@ class TextPairClassifyDataset(Dataset):
         raise NotImplementedError
 
 
-class TextGraphsQueryFactDataset(TextPairClassifyDataset):
+class TextGraphsQueryFactDataset(TextPairDataset):
     def __init__(
         self, data_split: SplitEnum, tokenizer: PreTrainedTokenizer, top_n=64,
     ):
@@ -256,7 +256,7 @@ class TextGraphsQueryFactDataset(TextPairClassifyDataset):
             print(self[i])
 
 
-def test_dataset(data_split=SplitEnum.train, config=TextPairClassifyConfig()):
+def test_dataset(data_split=SplitEnum.train, config=TextPairConfig()):
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     dataset = TextGraphsQueryFactDataset(data_split, tokenizer)
     dataset.analyze()
@@ -279,28 +279,26 @@ def score_acc(logits: Tensor, y: Tensor) -> Tensor:
     return preds.eq(y).float().mean()
 
 
-class TextPairClassifySystem(pl.LightningModule):
+class TextPairSystem(pl.LightningModule):
     def _forward_unimplemented(self, *args: Any) -> None:
         pass
 
     def __init__(self, **kwargs):
         super().__init__()
         self.hparams = kwargs  # For logging
-        self.config = TextPairClassifyConfig(**kwargs)
+        self.config = TextPairConfig(**kwargs)
         self.net = self.make_net()
         self.loss_fn = self.make_loss_fn()
 
-    def make_net(self) -> TextPairClassifyNet:
+    def make_net(self) -> TextPairNet:
         transformer = AutoModel.from_pretrained(self.config.model_name)
-        return TextPairClassifyNet(
-            transformer, self.config.num_labels, self.config.p_dropout
-        )
+        return TextPairNet(transformer, self.config.num_labels, self.config.p_dropout)
 
     def make_loss_fn(self) -> nn.Module:
         mapping = dict(crossentropy=nn.CrossEntropyLoss())
         return mapping[self.config.loss_name]
 
-    def make_dataset(self, data_split: SplitEnum) -> TextPairClassifyDataset:
+    def make_dataset(self, data_split: SplitEnum) -> TextPairDataset:
         tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
         mapping = dict(textgraphs=TextGraphsQueryFactDataset(data_split, tokenizer))
         ds = mapping[self.config.data_name]
@@ -384,13 +382,13 @@ class TextPairClassifySystem(pl.LightningModule):
         )
         return [optimizer], [scheduler]
 
-    def make_loader(self, ds: TextPairClassifyDataset, shuffle: bool) -> DataLoader:
+    def make_loader(self, ds: TextPairDataset, shuffle: bool) -> DataLoader:
         return DataLoader(
             ds,
             batch_size=self.config.bs,
             collate_fn=ds.collate_fn,
             shuffle=shuffle,
-            # num_workers=2,
+            num_workers=2,
         )
 
     def train_dataloader(self) -> DataLoader:
@@ -413,8 +411,8 @@ def get_logger(save_dir: str, path_dotenv: str) -> CometLogger:
     )
 
 
-class TextPairClassifyRetriever(Retriever):
-    net: TextPairClassifyNet
+class TextPairRetriever(Retriever):
+    net: TextPairNet
     ds: TextGraphsQueryFactDataset
 
     def make_embeds(self, texts: List[str], bs: int = 64) -> Tensor:
@@ -439,7 +437,7 @@ class TextPairClassifyRetriever(Retriever):
             for i in tqdm(range(len(queries))):
                 a = embeds_a[i].unsqueeze(dim=0).repeat(len(statements), 1)
                 x = self.net.fuse_embeds(a, embeds_b)
-                x = self.net.run_classify(x)
+                x = self.net.run_head(x)
                 assert x.shape == (len(statements), 2)
                 x = nn.functional.softmax(x, dim=-1)
                 dist: Tensor = x[:, 0]
@@ -450,8 +448,8 @@ class TextPairClassifyRetriever(Retriever):
 
 
 def run_train(logger: CometLogger):
-    config = TextPairClassifyConfig()
-    system = TextPairClassifySystem(**config.dict())
+    config = TextPairConfig()
+    system = TextPairSystem(**config.dict())
     trainer = pl.Trainer(
         logger=logger,
         max_epochs=config.num_epochs,
@@ -463,9 +461,9 @@ def run_train(logger: CometLogger):
 
 def run_eval(save_dir: str, data_split: SplitEnum):
     path = list(Path(save_dir).glob("**/*.ckpt"))[0]
-    system = TextPairClassifySystem.load_from_checkpoint(str(path))
+    system = TextPairSystem.load_from_checkpoint(str(path))
     ds = system.make_dataset(data_split)
-    retriever = TextPairClassifyRetriever(net=system.net, ds=ds)
+    retriever = TextPairRetriever(net=system.net, ds=ds)
 
     trainer = pl.Trainer(**get_device_kwargs())
     trainer.test(system, test_dataloaders=system.make_loader(ds, shuffle=False))
