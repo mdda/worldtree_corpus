@@ -38,7 +38,6 @@ TextPairBatch = Tuple[TextPairInput, Tensor]
 class TextPairConfig(BaseModel):
     bs: int = 32
     model_name: str = "distilbert-base-uncased"
-    num_labels: int = 2
     p_dropout: float = 0.2
     learning_rate: float = 5e-5
     weight_decay: float = 0.0
@@ -49,7 +48,7 @@ class TextPairConfig(BaseModel):
     num_epochs: int = 3
     overfit_pct: float = 0.0
     data_name: str = "textgraphs"
-    loss_name = "crossentropy"
+    loss_name = "mse"
 
 
 def is_tpu_available() -> bool:
@@ -72,7 +71,7 @@ def get_device_kwargs() -> Dict[str, int]:
 
 
 class TextPairNet(nn.Module):
-    def __init__(self, model: PreTrainedModel, num_labels: int, p_dropout: float):
+    def __init__(self, model: PreTrainedModel, p_dropout: float):
         super().__init__()
         self.model = model
 
@@ -80,7 +79,7 @@ class TextPairNet(nn.Module):
         # nn.Bilinear is really expensive! dim**3 -> 1.7 GB bigger checkpoint
         self.linear = nn.Linear(dim * 2, dim)
         self.dropout = nn.Dropout(p_dropout)
-        self.final = nn.Linear(dim, num_labels)
+        self.final = nn.Linear(dim, 1)
         self.activation = nn.ReLU()
 
     def _forward_unimplemented(self, *args: Any) -> None:
@@ -107,6 +106,9 @@ class TextPairNet(nn.Module):
         x = self.activation(x)
         x = self.dropout(x)
         x = self.final(x)
+        x = torch.squeeze(x, dim=-1)
+        x = torch.sigmoid(x)
+        assert x.ndim == 1
         return x
 
     def forward(self, inputs: TextPairInput) -> Tensor:
@@ -127,15 +129,15 @@ def test_net(
         inputs = (a, b)
 
     model = TextPairNet(
-        model=AutoModel.from_pretrained(config.model_name),
-        num_labels=config.num_labels,
-        p_dropout=config.p_dropout,
+        model=AutoModel.from_pretrained(config.model_name), p_dropout=config.p_dropout,
     )
     outputs = model(inputs)
-    assert tuple(outputs.shape) == (config.bs, config.num_labels)
+    assert tuple(outputs.shape) == (config.bs,)
 
 
 class QnAnsExplanationsRetriever(Retriever):
+    use_explains: bool
+
     def get_gold_explains(self, q: QuestionAnswer, data: TextGraphsData) -> List[str]:
         e: ExplanationUsed
         explains = [
@@ -148,22 +150,19 @@ class QnAnsExplanationsRetriever(Retriever):
 
     def make_query(self, q: QuestionAnswer, data: TextGraphsData) -> str:
         texts = [self.preproc.run(q.question), self.preproc.run(q.answers[0])]
-        texts.extend(self.get_gold_explains(q, data))
+        if self.use_explains:
+            texts.extend(self.get_gold_explains(q, data))
         return " ".join(texts)
 
 
 class TextPairExample(BaseModel):
     query: str
     fact: str
-    label: bool
+    score: float
 
 
 class TextPairDataset(Dataset):
     def __getitem__(self, i: int) -> TextPairExample:
-        raise NotImplementedError
-
-    @property
-    def num_labels(self) -> int:
         raise NotImplementedError
 
     @property
@@ -178,16 +177,11 @@ class TextGraphsQueryFactDataset(TextPairDataset):
         self.tokenizer = tokenizer
         self.top_n = top_n
         self.data = TextGraphsData(data_split=data_split)
-        self.retriever = QnAnsExplanationsRetriever()
-        self.label_map = {False: 0, True: 1}
         self.examples = self.load()
 
-    @property
-    def num_labels(self) -> int:
-        return len(self.label_map)
-
     def load(self) -> List[TextPairExample]:
-        r = self.retriever
+        r = QnAnsExplanationsRetriever(use_explains=True)
+        r_no_explains = QnAnsExplanationsRetriever(use_explains=False)
         data = self.data
         data.load()
         questions = [q for q in data.questions if q.explanation_gold]
@@ -199,12 +193,12 @@ class TextGraphsQueryFactDataset(TextPairDataset):
         assert len(ranking == len(questions))
 
         examples: List[TextPairExample] = []
-        for q, rank in tqdm(zip(questions, ranking)):
-            q_text = r.preproc.run(q.question) + " " + r.preproc.run(q.answers[0])
+        for q, rank in tqdm(zip(questions, ranking), total=len(questions)):
+            q_text = r_no_explains.make_query(q, data)
 
             facts_gold = set(r.get_gold_explains(q, data))
             for f in facts_gold:
-                examples.append(TextPairExample(query=q_text, fact=f, label=True))
+                examples.append(TextPairExample(query=q_text, fact=f, score=1.0))
 
             facts_related = set()
             for i in rank:
@@ -212,9 +206,21 @@ class TextGraphsQueryFactDataset(TextPairDataset):
                     facts_related.add(facts[i])
                 if len(facts_related) == len(facts_gold):
                     break
-
             for f in facts_related:
-                examples.append(TextPairExample(query=q_text, fact=f, label=False))
+                examples.append(TextPairExample(query=q_text, fact=f, score=0.5))
+            assert len(facts_related) == len(facts_gold)
+
+            facts_random = set()
+            pool = list(facts)
+            random.shuffle(pool)
+            for f in pool:
+                if f not in facts_gold and f not in facts_related:
+                    facts_random.add(f)
+                if len(facts_random) == len(facts_gold):
+                    break
+            assert len(facts_random) == len(facts_gold)
+            for f in facts_random:
+                examples.append(TextPairExample(query=q_text, fact=f, score=0.0))
 
         return examples
 
@@ -232,8 +238,8 @@ class TextGraphsQueryFactDataset(TextPairDataset):
         def fn(examples: List[TextPairExample]) -> TextPairBatch:
             a = self.make_tokens([e.query for e in examples])
             b = self.make_tokens([e.fact for e in examples])
-            labels = torch.Tensor([self.label_map[e.label] for e in examples]).long()
-            return (a, b), labels
+            scores = torch.Tensor([e.score for e in examples])
+            return (a, b), scores
 
         return fn
 
@@ -247,7 +253,7 @@ class TextGraphsQueryFactDataset(TextPairDataset):
             num_examples=len(self),
             query_lengths=analyze_lengths(query_lengths),
             fact_lengths=analyze_lengths(fact_lengths),
-            labels=Counter([e.label for e in self.examples]),
+            labels=Counter([e.score for e in self.examples]),
         )
         print(info)
         random.seed(42)
@@ -274,11 +280,6 @@ def test_dataset(data_split=SplitEnum.train, config=TextPairConfig()):
     test_net(inputs=inputs, config=config)
 
 
-def score_acc(logits: Tensor, y: Tensor) -> Tensor:
-    preds = torch.argmax(logits, dim=-1)
-    return preds.eq(y).float().mean()
-
-
 class TextPairSystem(pl.LightningModule):
     def _forward_unimplemented(self, *args: Any) -> None:
         pass
@@ -292,17 +293,16 @@ class TextPairSystem(pl.LightningModule):
 
     def make_net(self) -> TextPairNet:
         transformer = AutoModel.from_pretrained(self.config.model_name)
-        return TextPairNet(transformer, self.config.num_labels, self.config.p_dropout)
+        return TextPairNet(transformer, self.config.p_dropout)
 
     def make_loss_fn(self) -> nn.Module:
-        mapping = dict(crossentropy=nn.CrossEntropyLoss())
+        mapping = dict(mse=nn.MSELoss(), crossentropy=nn.CrossEntropyLoss())
         return mapping[self.config.loss_name]
 
     def make_dataset(self, data_split: SplitEnum) -> TextPairDataset:
         tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
         mapping = dict(textgraphs=TextGraphsQueryFactDataset(data_split, tokenizer))
         ds = mapping[self.config.data_name]
-        assert ds.num_labels == self.config.num_labels
         return ds
 
     def setup(self, stage: str):
@@ -325,8 +325,7 @@ class TextPairSystem(pl.LightningModule):
         x, y = batch
         logits = self(x)
         loss = self.loss_fn(logits, y)
-        acc = score_acc(logits, y)
-        return dict(val_loss=loss, val_acc=acc)
+        return dict(val_loss=loss)
 
     def validation_epoch_end(self, outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
         results = {}
@@ -388,7 +387,7 @@ class TextPairSystem(pl.LightningModule):
             batch_size=self.config.bs,
             collate_fn=ds.collate_fn,
             shuffle=shuffle,
-            num_workers=2,
+            num_workers=os.cpu_count(),
         )
 
     def train_dataloader(self) -> DataLoader:
@@ -416,7 +415,6 @@ class TextPairRetriever(Retriever):
     ds: TextGraphsQueryFactDataset
 
     def make_embeds(self, texts: List[str], bs: int = 64) -> Tensor:
-        self.net.eval()
         with torch.no_grad():
             chunks = []
             for i in tqdm(range(0, len(texts), bs)):
@@ -428,22 +426,21 @@ class TextPairRetriever(Retriever):
         return embeds
 
     def rank(self, queries: List[str], statements: List[str]) -> np.ndarray:
+        self.net = self.net.cpu()
+        self.net.eval()
+
         embeds_a = self.make_embeds(queries)
         embeds_b = self.make_embeds(statements)
-        distances = np.zeros(shape=(len(queries), len(statements)), dtype=np.float)
+        scores = np.zeros(shape=(len(queries), len(statements)), dtype=np.float)
 
-        self.net.eval()
         with torch.no_grad():
             for i in tqdm(range(len(queries))):
                 a = embeds_a[i].unsqueeze(dim=0).repeat(len(statements), 1)
                 x = self.net.fuse_embeds(a, embeds_b)
                 x = self.net.run_head(x)
-                assert x.shape == (len(statements), 2)
-                x = nn.functional.softmax(x, dim=-1)
-                dist: Tensor = x[:, 0]
-                distances[i] = dist.numpy()
+                scores[i] = x.numpy()
 
-        ranking = np.argsort(distances, axis=-1)
+        ranking = np.argsort(scores * -1, axis=-1)
         return ranking
 
 
@@ -468,10 +465,10 @@ def run_eval(save_dir: str, data_split: SplitEnum):
     trainer = pl.Trainer(**get_device_kwargs())
     trainer.test(system, test_dataloaders=system.make_loader(ds, shuffle=False))
 
-    # data = ds.data
-    # preds = retriever.run(data)
-    # Scorer().run(data.path_gold, preds)
-    # ResultAnalyzer().run(data, preds)
+    data = ds.data
+    preds = retriever.run(data)
+    Scorer().run(data.path_gold, preds)
+    ResultAnalyzer().run(data, preds)
 
 
 def main(save_dir="/tmp/comet_logger", path_dotenv="../excluded/.env"):
