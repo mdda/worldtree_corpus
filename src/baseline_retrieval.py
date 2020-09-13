@@ -6,6 +6,7 @@ from typing import List, Optional, Union, Dict
 import numpy as np
 import pandas as pd
 import spacy
+import torch
 from fire import Fire
 from pydantic import BaseModel
 from scipy.sparse import csr_matrix
@@ -14,6 +15,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
 from sklearn.pipeline import Pipeline
 from spacy.lang.en import English
+from torch import nn, Tensor
 from torchvision.datasets.utils import download_and_extract_archive
 from tqdm import tqdm
 
@@ -26,6 +28,7 @@ from dataset import (
     load_statements,
 )
 from extra_data import SplitEnum
+from losses import APLoss
 
 sys.path.append("../tg2020task")
 import evaluate
@@ -318,6 +321,10 @@ class Scorer(BaseModel):
 
 class ResultAnalyzer(BaseModel):
     thresholds: List[int] = [32, 64, 128, 256, 512, 1024]
+    loss_fn: nn.Module = APLoss()
+
+    class Config:
+        arbitrary_types_allowed = True
 
     @staticmethod
     def run_threshold(data: Data, preds: List[Prediction], threshold: int) -> float:
@@ -337,7 +344,31 @@ class ResultAnalyzer(BaseModel):
 
         return sum(scores) / len(scores)
 
+    def run_map_loss(self, data: Data, preds: List[Prediction]):
+        uids = deduplicate([s.uid_base for s in data.statements])
+        print(len(uids))
+        uid_to_i = {u: i for i, u in enumerate(uids)}
+        array_gold = np.zeros(shape=(len(preds), len(uids)))
+        array_pred = np.copy(array_gold)
+
+        assert len(data.questions) == len(preds)
+        for i, q in enumerate(data.questions):
+            for e in q.explanation_gold:
+                array_gold[i, uid_to_i[e.uid]] = 1
+
+        for i, p in enumerate(preds):
+            for j, u in enumerate(p.uids):
+                score = 1 / (j + 1)  # First item has highest score
+                assert 0.0 <= score <= 1.0
+                array_pred[i, uid_to_i[u]] = score
+
+        loss: Tensor = self.loss_fn(
+            torch.from_numpy(array_pred).float(), torch.from_numpy(array_gold).float()
+        )
+        print(dict(map_loss=loss.item()))
+
     def run(self, data: Data, preds: List[Prediction]):
+        self.run_map_loss(data, preds)
         for threshold in self.thresholds:
             recall = self.run_threshold(data, preds, threshold)
             print(dict(threshold=threshold, recall=recall))
