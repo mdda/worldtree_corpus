@@ -27,7 +27,14 @@ from transformers import (
 )
 from transformers.modeling_outputs import BaseModelOutput
 
-from baseline_retrieval import Data as TextGraphsData, Retriever, Scorer, ResultAnalyzer
+from baseline_retrieval import (
+    Data as TextGraphsData,
+    Retriever,
+    Scorer,
+    ResultAnalyzer,
+    TextProcessor,
+    SpacyProcessor,
+)
 from dataset import QuestionAnswer, ExplanationUsed
 from extra_data import SplitEnum, analyze_lengths
 
@@ -137,6 +144,7 @@ def test_net(
 
 class QnAnsExplanationsRetriever(Retriever):
     use_explains: bool
+    preproc: TextProcessor = SpacyProcessor()
 
     def get_gold_explains(self, q: QuestionAnswer, data: TextGraphsData) -> List[str]:
         e: ExplanationUsed
@@ -188,7 +196,7 @@ class TextGraphsQueryFactDataset(TextPairDataset):
         # Train set has 1 question without explanations: Mercury_7221305
 
         facts: List[str] = [r.preproc.run(s) for s in data.statements]
-        queries: List[str] = [r.make_query(q, data) for q in questions]
+        queries: List[str] = [" ".join(r.get_gold_explains(q, data)) for q in questions]
         ranking = r.rank(queries, facts)
         assert len(ranking == len(questions))
 
@@ -280,6 +288,43 @@ def test_dataset(data_split=SplitEnum.train, config=TextPairConfig()):
     test_net(inputs=inputs, config=config)
 
 
+class TextPairRetriever(Retriever):
+    net: TextPairNet
+    ds: TextGraphsQueryFactDataset
+    device: str = "cuda"
+
+    def make_embeds(self, texts: List[str], bs: int = 64) -> Tensor:
+        self.net = self.net.to(self.device)
+        with torch.no_grad():
+            chunks = []
+            for i in tqdm(range(0, len(texts), bs)):
+                inputs = self.ds.make_tokens(texts[i : i + bs])
+                inputs = inputs.to(self.device)
+                chunks.append(self.net.embed_texts(inputs))
+
+        embeds = torch.cat(chunks, dim=0)
+        assert embeds.shape[0] == len(texts)
+        return embeds
+
+    def rank(self, queries: List[str], statements: List[str]) -> np.ndarray:
+        self.net = self.net.to(self.device)
+        self.net.eval()
+
+        embeds_a = self.make_embeds(queries)
+        embeds_b = self.make_embeds(statements)
+        scores = np.zeros(shape=(len(queries), len(statements)), dtype=np.float)
+
+        with torch.no_grad():
+            for i in tqdm(range(len(queries))):
+                a = embeds_a[i].unsqueeze(dim=0).repeat(len(statements), 1)
+                x = self.net.fuse_embeds(a, embeds_b)
+                x = self.net.run_head(x)
+                scores[i] = x.cpu().numpy()
+
+        ranking = np.argsort(scores * -1, axis=-1)
+        return ranking
+
+
 class TextPairSystem(pl.LightningModule):
     def _forward_unimplemented(self, *args: Any) -> None:
         pass
@@ -290,6 +335,8 @@ class TextPairSystem(pl.LightningModule):
         self.config = TextPairConfig(**kwargs)
         self.net = self.make_net()
         self.loss_fn = self.make_loss_fn()
+        self.ds_train = self.make_dataset(SplitEnum.train)
+        self.ds_dev = self.make_dataset(SplitEnum.dev)
 
     def make_net(self) -> TextPairNet:
         transformer = AutoModel.from_pretrained(self.config.model_name)
@@ -299,7 +346,7 @@ class TextPairSystem(pl.LightningModule):
         mapping = dict(mse=nn.MSELoss(), crossentropy=nn.CrossEntropyLoss())
         return mapping[self.config.loss_name]
 
-    def make_dataset(self, data_split: SplitEnum) -> TextPairDataset:
+    def make_dataset(self, data_split: SplitEnum) -> TextGraphsQueryFactDataset:
         tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
         mapping = dict(textgraphs=TextGraphsQueryFactDataset(data_split, tokenizer))
         ds = mapping[self.config.data_name]
@@ -327,12 +374,23 @@ class TextPairSystem(pl.LightningModule):
         loss = self.loss_fn(logits, y)
         return dict(val_loss=loss)
 
+    def run_eval(self, data_split: SplitEnum) -> float:
+        ds = {SplitEnum.train: self.ds_train, SplitEnum.dev: self.ds_dev}[data_split]
+        retriever = TextPairRetriever(net=self.net, ds=ds)
+        data = ds.data
+        preds = retriever.run(data)
+        qid_to_score = Scorer().run(data.path_gold, preds)
+        ResultAnalyzer().run(data, preds)
+        scores = list(qid_to_score.values())
+        return sum(scores) / len(scores)
+
     def validation_epoch_end(self, outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
         results = {}
         for d in outputs:
             for k, v in d.items():
                 results.setdefault(k, []).append(v)
         log = {k: torch.stack(v).mean().item() for k, v in results.items()}
+        log.update(val_map=self.run_eval(SplitEnum.dev))
         print(log)
         return dict(val_loss=log["val_loss"], log=log)
 
@@ -391,10 +449,10 @@ class TextPairSystem(pl.LightningModule):
         )
 
     def train_dataloader(self) -> DataLoader:
-        return self.make_loader(self.make_dataset(SplitEnum.train), shuffle=True)
+        return self.make_loader(self.ds_train, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
-        return self.make_loader(self.make_dataset(SplitEnum.dev), shuffle=False)
+        return self.make_loader(self.ds_dev, shuffle=False)
 
 
 def get_logger(save_dir: str, path_dotenv: str) -> CometLogger:
@@ -408,40 +466,6 @@ def get_logger(save_dir: str, path_dotenv: str) -> CometLogger:
         # rest_api_key=os.environ["COMET_REST_KEY"], # Optional
         # experiment_name=str(config),  # Optional
     )
-
-
-class TextPairRetriever(Retriever):
-    net: TextPairNet
-    ds: TextGraphsQueryFactDataset
-
-    def make_embeds(self, texts: List[str], bs: int = 64) -> Tensor:
-        with torch.no_grad():
-            chunks = []
-            for i in tqdm(range(0, len(texts), bs)):
-                inputs = self.ds.make_tokens(texts[i : i + bs])
-                chunks.append(self.net.embed_texts(inputs))
-
-        embeds = torch.cat(chunks, dim=0)
-        assert embeds.shape[0] == len(texts)
-        return embeds
-
-    def rank(self, queries: List[str], statements: List[str]) -> np.ndarray:
-        self.net = self.net.cpu()
-        self.net.eval()
-
-        embeds_a = self.make_embeds(queries)
-        embeds_b = self.make_embeds(statements)
-        scores = np.zeros(shape=(len(queries), len(statements)), dtype=np.float)
-
-        with torch.no_grad():
-            for i in tqdm(range(len(queries))):
-                a = embeds_a[i].unsqueeze(dim=0).repeat(len(statements), 1)
-                x = self.net.fuse_embeds(a, embeds_b)
-                x = self.net.run_head(x)
-                scores[i] = x.numpy()
-
-        ranking = np.argsort(scores * -1, axis=-1)
-        return ranking
 
 
 def run_train(logger: CometLogger):
@@ -479,7 +503,7 @@ def main(save_dir="/tmp/comet_logger", path_dotenv="../excluded/.env"):
         logger = get_logger(save_dir, path_dotenv)
         run_train(logger)
 
-    run_eval(save_dir, SplitEnum.dev)
+    # run_eval(save_dir, SplitEnum.dev)
 
 
 if __name__ == "__main__":
