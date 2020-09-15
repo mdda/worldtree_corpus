@@ -770,6 +770,7 @@ if '__main__' == __name__:
     analyse_outliers(64, statements, qanda_dev, '/tmp/scorer/predict.txt')
     #analyse_outliers(64, statements, qanda_dev, '../predictions/predict_baseline-retrieval.txt')
     #analyse_outliers(64, statements, qanda_dev, '../predictions/predict_graph-all-to-all.txt')
+    #analyse_outliers(64, statements, qanda_dev, '../predictions/predict_graph-q-to-a.txt')
 
 
     """
