@@ -2,10 +2,12 @@
 From https://github.com/arosh/BM25Transformer/blob/master/bm25.py
 """
 import warnings
+from typing import List
 
 import numpy as np
 import scipy.sparse as sp
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import (
     _document_frequency,
     TfidfVectorizer,
@@ -134,3 +136,20 @@ class BM25Vectorizer(TfidfVectorizer):
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=FutureWarning)
             return self.vec.transform(raw_documents)
+
+
+class TruncatedSVDVectorizer(TfidfVectorizer):
+    def __init__(self, vec: TfidfVectorizer, n_components: int, random_state=42):
+        super().__init__()
+        self.vec = vec
+        self.svd = TruncatedSVD(n_components=n_components, random_state=random_state)
+
+    def fit(self, texts: List[str], y=None):
+        self.vec.fit(texts)
+        x = self.vec.transform(texts)
+        self.svd.fit(x)
+
+    def transform(self, texts: List[str], copy="deprecated"):
+        x = self.vec.transform(texts)
+        x = self.svd.transform(x)
+        return x

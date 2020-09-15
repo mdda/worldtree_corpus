@@ -10,16 +10,15 @@ import torch
 from fire import Fire
 from pydantic import BaseModel
 from scipy.sparse import csr_matrix
-from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
 from sklearn.pipeline import Pipeline
 from spacy.lang.en import English
+from spacy.tokens import Token
 from torch import nn, Tensor
 from torchvision.datasets.utils import download_and_extract_archive
 from tqdm import tqdm
 
-from bm25 import BM25Vectorizer
 from dataset import (
     Statement,
     QuestionAnswer,
@@ -29,6 +28,7 @@ from dataset import (
 )
 from extra_data import SplitEnum
 from losses import APLoss
+from vectorizers import BM25Vectorizer
 
 sys.path.append("../tg2020task")
 import evaluate
@@ -230,13 +230,17 @@ class TextGraphsLemmatizer(TextProcessor):
 
 class SpacyProcessor(TextProcessor):
     nlp: English = spacy.load("en_core_web_sm", disable=["tagger", "ner", "parser"])
+    remove_stopwords: bool = False
 
     class Config:
         arbitrary_types_allowed = True
 
     def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
         doc = self.nlp(x.raw_txt)
-        words = [token.lemma_ for token in doc]
+        tokens: List[Token] = [tok for tok in doc]
+        if self.remove_stopwords:
+            tokens = [tok for tok in tokens if not tok.is_stop]
+        words = [tok.lemma_ for tok in tokens]
         return " ".join(words)
 
 
@@ -374,34 +378,21 @@ class ResultAnalyzer(BaseModel):
             print(dict(threshold=threshold, recall=recall))
 
 
-class TruncatedSVDVectorizer(TfidfVectorizer):
-    def __init__(self, vec: TfidfVectorizer, n_components: int, random_state=42):
-        super().__init__()
-        self.vec = vec
-        self.svd = TruncatedSVD(n_components=n_components, random_state=random_state)
-
-    def fit(self, texts: List[str], y=None):
-        self.vec.fit(texts)
-        x = self.vec.transform(texts)
-        self.svd.fit(x)
-
-    def transform(self, texts: List[str], copy="deprecated"):
-        x = self.vec.transform(texts)
-        x = self.svd.transform(x)
-        return x
-
-
 def main(data_split=SplitEnum.dev):
     data = Data(data_split=data_split)
     data.load()
     data.analyze()
 
-    # retriever = Retriever()  # Dev MAP:  0.3788
-    # retriever = Retriever(preproc=SpacyProcessor())  # Dev MAP:  0.4378
-    # retriever = Retriever(preproc=KeywordProcessor())  # Dev MAP:  0.4311
+    # retriever = Retriever()  # Dev MAP=0.3788, recall@512=0.7866
+    # retriever = Retriever(preproc=SpacyProcessor())  # Dev MAP=0.4378, recall@512=0.8819
+    # retriever = Retriever(
+    #     preproc=SpacyProcessor(remove_stopwords=True)
+    # )  # Dev MAP=0.4394, recall@512=0.875
+    # retriever = Retriever(preproc=KeywordProcessor())  # Dev MAP=0.4313, recall@512=0.8725
     # retriever = Retriever(
     #     preproc=KeywordProcessor(), ranker=StageRanker()
-    # )  # Dev MAP:  0.4354, Dev recall@512=0.9084
+    # )  # Dev MAP=0.4354, recall@512=0.9084
+
     if False:
         retriever = Retriever(
             preproc=KeywordProcessor(), ranker=IterativeRanker()

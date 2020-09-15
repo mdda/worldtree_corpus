@@ -9,7 +9,7 @@ from scipy import sparse
 from sklearn import feature_extraction, metrics
 from tqdm import tqdm
 
-from bm25 import BM25Vectorizer
+from vectorizers import BM25Vectorizer
 
 sys.path.append("../tg2020task")
 
