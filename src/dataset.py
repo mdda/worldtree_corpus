@@ -674,7 +674,7 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
     # Now got through the questions, and chart out the 'hits', 
     #   And analyse the 'misses'
     cnt, sc_tot, sc_trunc_tot, sc_max_tot=0, 0.,0.,0.
-    for qa in qanda:
+    for qa_i, qa in enumerate(qanda):
         if not evaluate_example(qa): continue
         cnt+=1
         gold=set(e.uid for e in qa.explanation_gold)
@@ -713,7 +713,7 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         s_table.append(']')
         for j in miss:   # in order they were missed
             s_table.append( statement_desc( statement_from_uid[p[j]] ) )
-        print("    "+' '.join(s_table))
+        print(f"   #{qa_i:4d} = {qa.question_id} :: "+' '.join(s_table))
     print(f"{sc_tot/cnt:.4f} {sc_trunc_tot/cnt:.4f} {sc_max_tot/cnt:.4f}")
     
 if '__main__' == __name__:
