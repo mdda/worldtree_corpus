@@ -687,15 +687,21 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
 
         hits, found, remaining=[], [], gold.copy()
         for i in range(limit):
-            if p[i] in gold:
-                hits.append('X')
-                remaining.remove(p[i])
-                found.append(p[i])
+            if i<len(p):
+                if p[i] in gold:
+                    hits.append('X')
+                    remaining.remove(p[i])
+                    found.append(p[i])
+                else:
+                    hits.append('.')
             else:
-                hits.append('.')
+                hits.append('-')
         miss=[]
         for j in remaining:
-            miss.append(p.index(j))
+            try:
+                miss.append(p.index(j))
+            except:
+                miss.append(-1) # Missing in predictions
         miss=sorted(miss)
         misses = ','.join(f"{m:d}" for m in miss)
 
@@ -712,7 +718,10 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
             s_table.append( statement_desc( statement_from_uid[uid] ) )
         s_table.append(']')
         for j in miss:   # in order they were missed
-            s_table.append( statement_desc( statement_from_uid[p[j]] ) )
+            if j<0:
+                s_table.append( "missing" )    
+            else:
+                s_table.append( statement_desc( statement_from_uid[p[j]] ) )
         print(f"   #{qa_i:4d} = {qa.question_id} :: "+' '.join(s_table))
     print(f"{sc_tot/cnt:.4f} {sc_trunc_tot/cnt:.4f} {sc_max_tot/cnt:.4f}")
     
@@ -759,6 +768,8 @@ if '__main__' == __name__:
 
     #analyse_outliers(32, statements, qanda_dev, '/tmp/scorer/predict.txt')
     analyse_outliers(64, statements, qanda_dev, '/tmp/scorer/predict.txt')
+    #analyse_outliers(64, statements, qanda_dev, '../predictions/predict_baseline-retrieval.txt')
+    #analyse_outliers(64, statements, qanda_dev, '../predictions/predict_graph-all-to-all.txt')
 
 
     """
