@@ -1,7 +1,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import List, Optional, Union, Dict
+from typing import List, Optional, Union, Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -110,7 +110,8 @@ class Retriever(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    def make_pred(self, i_query: int, rank: List[int], data: Data) -> Prediction:
+    @staticmethod
+    def make_pred(i_query: int, rank: List[int], data: Data) -> Prediction:
         uids = [data.statements[i].uid_base for i in rank]
         uids = deduplicate(uids)
         return Prediction(qid=data.questions[i_query].question_id, uids=uids)
@@ -331,11 +332,27 @@ class ResultAnalyzer(BaseModel):
         arbitrary_types_allowed = True
 
     @staticmethod
-    def run_threshold(data: Data, preds: List[Prediction], threshold: int) -> float:
+    def filter_qns(
+        data: Data, preds: List[Prediction]
+    ) -> Tuple[List[QuestionAnswer], List[Prediction]]:
         assert len(data.questions) == len(preds)
+        pairs = []
+        for q, p in zip(data.questions, preds):
+            if q.explanation_gold:
+                pairs.append((q, p))
+            else:
+                print(dict(qn_no_explains=q.question_id))
+
+        qns, preds = zip(*pairs)
+        return qns, preds
+
+    def run_threshold(
+        self, data: Data, preds: List[Prediction], threshold: int
+    ) -> float:
+        qns, preds = self.filter_qns(data, preds)
         scores = []
 
-        for q, p in zip(data.questions, preds):
+        for q, p in zip(qns, preds):
             assert q.question_id == p.qid
             predicted = set(p.uids[:threshold])
             gold = set([e.uid for e in q.explanation_gold])
@@ -343,22 +360,24 @@ class ResultAnalyzer(BaseModel):
                 true_pos = predicted.intersection(gold)
                 recall = len(true_pos) / len(gold)
                 scores.append(recall)
-            else:
-                print(dict(question_no_labels=q.question_id))
 
         return sum(scores) / len(scores)
 
     def run_map_loss(self, data: Data, preds: List[Prediction]):
+        qns, preds = self.filter_qns(data, preds)
         uids = deduplicate([s.uid_base for s in data.statements])
         print(len(uids))
         uid_to_i = {u: i for i, u in enumerate(uids)}
         array_gold = np.zeros(shape=(len(preds), len(uids)))
         array_pred = np.copy(array_gold)
 
-        assert len(data.questions) == len(preds)
-        for i, q in enumerate(data.questions):
+        for i, q in enumerate(qns):
             for e in q.explanation_gold:
-                array_gold[i, uid_to_i[e.uid]] = 1
+                j = uid_to_i.get(e.uid)
+                if j is not None:
+                    array_gold[i, j] = 1
+                else:
+                    print(dict(uid_not_in_statements=e.uid))
 
         for i, p in enumerate(preds):
             for j, u in enumerate(p.uids):
@@ -383,31 +402,32 @@ def main(data_split=SplitEnum.dev):
     data.load()
     data.analyze()
 
-    # retriever = Retriever()  # Dev MAP=0.3788, recall@512=0.7866
-    # retriever = Retriever(preproc=SpacyProcessor())  # Dev MAP=0.4378, recall@512=0.8819
+    # retriever = Retriever()  # Dev MAP=0.3965, recall@512=0.7911
+    # retriever = Retriever(preproc=SpacyProcessor())  # Dev MAP=0.4587, recall@512=0.8849
     # retriever = Retriever(
     #     preproc=SpacyProcessor(remove_stopwords=True)
-    # )  # Dev MAP=0.4394, recall@512=0.875
-    # retriever = Retriever(preproc=KeywordProcessor())  # Dev MAP=0.4313, recall@512=0.8725
+    # )  # Dev MAP=0.4615, recall@512=0.8780
+    # retriever = Retriever(preproc=KeywordProcessor())  # Dev MAP=0.4529, recall@512=0.8755
     # retriever = Retriever(
     #     preproc=KeywordProcessor(), ranker=StageRanker()
-    # )  # Dev MAP=0.4354, recall@512=0.9084
+    # )  # Dev MAP=0.4575, recall@512=0.9095
+
+    # # Maybe this dense vectorizer can make useful features for deep learning methods
+    # from vectorizers import TruncatedSVDVectorizer
+    # retriever = Retriever(
+    #     vectorizer=TruncatedSVDVectorizer(BM25Vectorizer(), n_components=768),
+    #     preproc=KeywordProcessor(),
+    # )  # Dev MAP:  0.3741, recall@512= 0.8772
 
     if False:
         retriever = Retriever(
             preproc=KeywordProcessor(), ranker=IterativeRanker()
-        )  # Dev MAP:  0.4505, Dev recall@512=0.8880
+        )  # Dev MAP=0.4704, recall@512=0.8910
     if True:
         retriever = Retriever(
             preproc=KeywordProcessor(),
             ranker=StageRanker(num_per_stage=[16, 32, 64, 128], scale=1.5),
-        )  # Dev MAP:  0.4368, Dev recall@512=0.9177
-
-        # Maybe this dense vectorizer can make useful features for deep learning methods
-        # retriever = Retriever(
-        #     vectorizer=TruncatedSVDVectorizer(BM25Vectorizer(), n_components=768),
-        #     preproc=KeywordProcessor(),
-        # )  # Dev MAP:  0.3596, Dev recall@512=0.8684
+        )  # Dev MAP=0.4586, recall@512=0.9242
 
     preds = retriever.run(data)
     Scorer().run(data.path_gold, preds)
