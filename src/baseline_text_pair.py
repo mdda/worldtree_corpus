@@ -77,52 +77,67 @@ def get_device_kwargs() -> Dict[str, int]:
     return kwargs
 
 
+class ScaleLinear(nn.Linear):
+    def _forward_unimplemented(self, *args: Any) -> None:
+        pass
+
+    def reset_parameters(self) -> None:
+        # Output should maintain relative order even without training eg [1, 2] -> [1.1, 2.1]
+        super().reset_parameters()
+        nn.init.constant_(self.weight, 1.0)
+
+
+class ScaleNet(nn.Module):
+    def _forward_unimplemented(self, *args: Any) -> None:
+        pass
+
+    def __init__(self, num_layers: int):
+        super().__init__()
+        layers = []
+        for _ in range(num_layers - 1):
+            layers.extend([ScaleLinear(1, 1), nn.ReLU()])
+        layers.append(ScaleLinear(1, 1))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.net(x)
+
+
 class TextPairNet(nn.Module):
-    def __init__(self, model: PreTrainedModel, p_dropout: float):
+    def __init__(self, model: PreTrainedModel, p_dropout: float, output_size=128):
         super().__init__()
         self.model = model
 
         dim = model.config.dim
         # nn.Bilinear is really expensive! dim**3 -> 1.7 GB bigger checkpoint
-        self.linear = nn.Linear(dim * 2, dim)
-        self.dropout = nn.Dropout(p_dropout)
-        self.final = nn.Linear(dim, 1)
-        self.activation = nn.ReLU()
+        self.linear = nn.Sequential(nn.Linear(dim, output_size), nn.Dropout(p_dropout))
+        self.scaler = ScaleNet(num_layers=3)
 
     def _forward_unimplemented(self, *args: Any) -> None:
         pass
 
     def embed_texts(self, inputs: BatchEncoding) -> Tensor:
-        num_seq, seq_len = inputs.input_ids.shape
         outputs: BaseModelOutput = self.model(
             **inputs, return_dict=True,
         )
-        _, _, dim = outputs.last_hidden_state.shape
-        pooled: Tensor = outputs.last_hidden_state[:, 0, :]
-        assert tuple(pooled.shape) == (num_seq, dim)
-        return pooled
-
-    def fuse_embeds(self, a: Tensor, b: Tensor) -> Tensor:
-        assert a.shape == b.shape
-        x = torch.cat([a, b], dim=-1)
-        x = self.linear(x)
-        assert x.shape == a.shape
+        x = outputs.last_hidden_state  # (bs, seq_len, hidden)
+        x = torch.nn.functional.normalize(x, p=2, dim=2)
         return x
 
-    def run_head(self, x: Tensor) -> Tensor:
-        x = self.activation(x)
-        x = self.dropout(x)
-        x = self.final(x)
-        x = torch.squeeze(x, dim=-1)
-        x = torch.sigmoid(x)
-        assert x.ndim == 1
+    def fuse_embeds(self, a: Tensor, b: Tensor) -> Tensor:
+        # ColBERT-style MaxSimilarity
+        # Reference: https://github.com/stanford-futuredata/ColBERT/blob/master/src/model.py
+        x = torch.bmm(a, b.permute(0, 2, 1))
+        x = torch.max(x, dim=2).values
+        x = torch.mean(x, dim=1, keepdim=True)
+        x = self.scaler(x)
+        x = torch.squeeze(x, dim=1)
         return x
 
     def forward(self, inputs: TextPairInput) -> Tensor:
         a = self.embed_texts(inputs[0])
         b = self.embed_texts(inputs[1])
         x = self.fuse_embeds(a, b)
-        x = self.run_head(x)
         return x
 
 
@@ -144,14 +159,14 @@ def test_net(
 
 class QnAnsExplanationsRetriever(Retriever):
     use_explains: bool
-    preproc: TextProcessor = SpacyProcessor()
+    preproc: TextProcessor = SpacyProcessor(remove_stopwords=True)
 
     def get_gold_explains(self, q: QuestionAnswer, data: TextGraphsData) -> List[str]:
         e: ExplanationUsed
         explains = [
             self.preproc.run(s)
             for e in q.explanation_gold
-            for s in data.uid_to_statements[e.uid]
+            for s in data.uid_to_statements.get(e.uid, [])
         ]
         assert explains
         return explains
@@ -293,14 +308,19 @@ class TextPairRetriever(Retriever):
     ds: TextGraphsQueryFactDataset
     device: str = "cuda"
 
+    @staticmethod
+    def get_slice(x: BatchEncoding, start: int, end: int) -> BatchEncoding:
+        slice = {k: v[start:end] for k, v in x.data.items()}
+        return BatchEncoding(data=slice)
+
     def make_embeds(self, texts: List[str], bs: int = 64) -> Tensor:
         self.net = self.net.to(self.device)
+        inputs: BatchEncoding = self.ds.make_tokens(texts)
         with torch.no_grad():
             chunks = []
             for i in tqdm(range(0, len(texts), bs)):
-                inputs = self.ds.make_tokens(texts[i : i + bs])
-                inputs = inputs.to(self.device)
-                chunks.append(self.net.embed_texts(inputs))
+                x = self.get_slice(inputs, i, i + bs).to(self.device)
+                chunks.append(self.net.embed_texts(x))
 
         embeds = torch.cat(chunks, dim=0)
         assert embeds.shape[0] == len(texts)
@@ -316,9 +336,8 @@ class TextPairRetriever(Retriever):
 
         with torch.no_grad():
             for i in tqdm(range(len(queries))):
-                a = embeds_a[i].unsqueeze(dim=0).repeat(len(statements), 1)
+                a = embeds_a[i].unsqueeze(dim=0).repeat(len(statements), 1, 1)
                 x = self.net.fuse_embeds(a, embeds_b)
-                x = self.net.run_head(x)
                 scores[i] = x.cpu().numpy()
 
         ranking = np.argsort(scores * -1, axis=-1)
@@ -471,6 +490,7 @@ def get_logger(save_dir: str, path_dotenv: str) -> CometLogger:
 def run_train(logger: CometLogger):
     config = TextPairConfig()
     system = TextPairSystem(**config.dict())
+
     trainer = pl.Trainer(
         logger=logger,
         max_epochs=config.num_epochs,
