@@ -6,6 +6,8 @@ from typing import List
 
 import numpy as np
 import scipy.sparse as sp
+import spacy
+import torch
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import (
@@ -15,6 +17,9 @@ from sklearn.feature_extraction.text import (
 )
 from sklearn.pipeline import make_pipeline
 from sklearn.utils.validation import check_is_fitted
+from spacy.lang.en import English
+from spacy.tokens import Doc, Token
+from torch import Tensor
 
 
 class BM25Transformer(BaseEstimator, TransformerMixin):
@@ -153,3 +158,21 @@ class TruncatedSVDVectorizer(TfidfVectorizer):
         x = self.vec.transform(texts)
         x = self.svd.transform(x)
         return x
+
+
+class SpacyVectorizer(TfidfVectorizer):
+    def __init__(self, name="en_core_web_lg"):
+        super().__init__()
+        self.nlp: English = spacy.load(name, disable=["tagger", "ner", "parser"])
+
+    def fit(self, texts: List[str], y=None):
+        pass
+
+    @staticmethod
+    def doc_to_vecs(doc: Doc) -> List[Tensor]:
+        tok: Token
+        arrays = [np.array(tok.vector) for tok in doc if tok.has_vector]
+        return [torch.from_numpy(a).float() for a in arrays]
+
+    def transform(self, texts: List[str], copy="deprecated") -> List[List[Tensor]]:
+        return [self.doc_to_vecs(d) for d in self.nlp.pipe(texts)]

@@ -9,10 +9,7 @@ import spacy
 import torch
 from fire import Fire
 from pydantic import BaseModel
-from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_distances
-from sklearn.pipeline import Pipeline
 from spacy.lang.en import English
 from spacy.tokens import Token
 from torch import nn, Tensor
@@ -28,20 +25,11 @@ from dataset import (
 )
 from extra_data import SplitEnum
 from losses import APLoss
-from vectorizers import BM25Vectorizer
+from rankers import Ranker, WordEmbedRanker, deduplicate
+from vectorizers import BM25Vectorizer, SpacyVectorizer
 
 sys.path.append("../tg2020task")
 import evaluate
-
-
-def deduplicate(items: list) -> list:
-    seen = set()
-    output = []
-    for x in items:
-        if x not in seen:
-            seen.add(x)
-            output.append(x)
-    return output
 
 
 class Data(BaseModel):
@@ -95,16 +83,9 @@ class TextProcessor(BaseModel):
         return x.raw_txt
 
 
-class Ranker(BaseModel):
-    def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
-        distances: np.ndarray = cosine_distances(vecs_q, vecs_s)
-        ranking: np.ndarray = np.argsort(distances, axis=-1)
-        return ranking
-
-
 class Retriever(BaseModel):
     preproc: TextProcessor = TextProcessor()
-    vectorizer: Union[TfidfVectorizer, Pipeline] = BM25Vectorizer()
+    vectorizer: TfidfVectorizer = BM25Vectorizer()
     ranker: Ranker = Ranker()
 
     class Config:
@@ -134,65 +115,6 @@ class Retriever(BaseModel):
         for i in tqdm(range(len(ranking))):
             preds.append(self.make_pred(i, list(ranking[i]), data))
         return preds
-
-
-class StageRanker(Ranker):
-    # Dev MAP: 0.3816
-    num_per_stage: List[int] = [25, 100]
-    scale: float = 1.0
-
-    def recurse(
-        self,
-        vec_q: csr_matrix,
-        vecs_s: csr_matrix,
-        indices_s: np.ndarray,
-        num_per_stage: List[int],
-        num_accum: int = 0,
-    ) -> List[int]:
-        num_s = vecs_s.shape[0]
-        assert num_s == len(indices_s)
-        if num_s == 0:
-            return []
-
-        num_keep = num_s
-        if num_per_stage:
-            num_keep = num_per_stage.pop(0)
-        num_next = max(num_s - num_keep, 0)
-
-        distances: np.ndarray = cosine_distances(vec_q, vecs_s)[0]
-        assert distances.shape == (num_s,)
-        rank = np.argsort(distances)
-
-        vecs_keep = vecs_s[rank][:num_keep]
-        indices_keep = indices_s[rank][:num_keep]
-        vec_new = np.max(vecs_keep, axis=0)
-        vec_new = vec_new / (self.scale ** num_accum)
-        if isinstance(vec_q, csr_matrix):
-            vec_q = vec_q.maximum(vec_new)
-        else:
-            vec_q = np.maximum(vec_q, vec_new)
-        num_accum += num_keep
-
-        if num_next == 0:
-            vecs_s = np.array([])
-            indices_s = np.array([])
-        else:
-            vecs_s = vecs_s[rank][-num_next:]
-            indices_s = indices_s[rank][-num_next:]
-
-        return list(indices_keep) + self.recurse(
-            vec_q, vecs_s, indices_s, num_per_stage, num_accum,
-        )
-
-    def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
-        num_q = vecs_q.shape[0]
-        num_s = vecs_s.shape[0]
-        ranking = np.zeros(shape=(num_q, num_s), dtype=np.int)
-        for i in tqdm(range(num_q)):
-            ranking[i] = self.recurse(
-                vecs_q[[i]], vecs_s, np.arange(num_s), list(self.num_per_stage)
-            )
-        return ranking
 
 
 class TextGraphsLemmatizer(TextProcessor):
@@ -240,7 +162,11 @@ class SpacyProcessor(TextProcessor):
         doc = self.nlp(x.raw_txt)
         tokens: List[Token] = [tok for tok in doc]
         if self.remove_stopwords:
+            # Only 1 case where all tokens are stops: "three is more than two"
             tokens = [tok for tok in tokens if not tok.is_stop]
+            if not tokens:
+                print("SpacyProcessor: No non-stopwords:", doc)
+                return "nothing"
         words = [tok.lemma_ for tok in tokens]
         return " ".join(words)
 
@@ -248,50 +174,6 @@ class SpacyProcessor(TextProcessor):
 class KeywordProcessor(TextProcessor):
     def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
         return " ".join(x.keywords)
-
-
-class IterativeRanker(Ranker):
-    max_seq_len: int = 128
-    top_n: int = 1
-    scale: float = 1.25
-
-    def recurse(
-        self, vec_q: csr_matrix, vecs_s: csr_matrix, indices: List[int],
-    ):
-        if len(indices) >= self.max_seq_len:
-            return
-
-        distances: np.ndarray = cosine_distances(vec_q, vecs_s)[0]
-        assert distances.shape == (vecs_s.shape[0],)
-        rank = np.argsort(distances)
-
-        seen = set(indices)
-        count = 0
-        for i in rank:
-            if count == self.top_n:
-                break
-
-            if i not in seen:
-                vec_new = vecs_s[i] / (self.scale ** len(indices))
-                if isinstance(vec_q, csr_matrix):
-                    vec_q = vec_q.maximum(vec_new)
-                else:
-                    vec_q = np.maximum(vec_q, vec_new)
-                indices.append(i)
-                count += 1
-                self.recurse(vec_q, vecs_s, indices)
-
-    def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
-        ranking = super().run(vecs_q, vecs_s)
-        rank_old: np.ndarray
-        for i, rank_old in tqdm(enumerate(ranking), total=len(ranking)):
-            rank_new = []
-            self.recurse(vecs_q[[i]], vecs_s, rank_new)
-            assert rank_new
-            rank_new = rank_new + list(rank_old)
-            rank_new = deduplicate(rank_new)
-            ranking[i] = rank_new
-        return ranking
 
 
 class Scorer(BaseModel):
@@ -397,6 +279,12 @@ class ResultAnalyzer(BaseModel):
             print(dict(threshold=threshold, recall=recall))
 
 
+class WordEmbedRetriever(Retriever):
+    preproc: TextProcessor = SpacyProcessor(remove_stopwords=True)
+    vectorizer: TfidfVectorizer = SpacyVectorizer()
+    ranker: Ranker = WordEmbedRanker()
+
+
 def main(data_split=SplitEnum.dev):
     data = Data(data_split=data_split)
     data.load()
@@ -428,6 +316,8 @@ def main(data_split=SplitEnum.dev):
             preproc=KeywordProcessor(),
             ranker=StageRanker(num_per_stage=[16, 32, 64, 128], scale=1.5),
         )  # Dev MAP=0.4586, recall@512=0.9242
+
+    # retriever = WordEmbedRetriever()  # Dev MAP=0.01436, recall@512=0.4786
 
     preds = retriever.run(data)
     Scorer().run(data.path_gold, preds)
