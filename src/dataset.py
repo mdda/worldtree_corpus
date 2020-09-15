@@ -200,7 +200,7 @@ def extract_keywords_complex(spacy_tokens, require_keywords=True) -> Keywords:
 
 
 def read_explanation_file(path: str, table_name: str) -> List[Statement]:
-    header, fields, rows, uid_col = [], dict(), [], None
+    header, fields, rows, uid_col, dep_col = [], dict(), [], None, None
 
     with open(path, 'rt') as fd:
         rd = csv.reader(fd, delimiter="\t", quotechar='"')
@@ -211,13 +211,14 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
                 header_fill=[True] *len(header)
             else:    
                 rows.append(row)
-
     for i, col_name in enumerate(header):
         if col_name.startswith('[SKIP]'):
             header_skip[i]=True
             # Find first column name that contains '[SKIP] ... UID ...'
             if 'UID' in col_name and uid_col is None:
                 uid_col = i
+            if 'DEP' in col_name and dep_col is None:
+                dep_col = i
         else:
             if not col_name.startswith('[FILL]'):
                 header_fill[i]=False
@@ -227,11 +228,23 @@ def read_explanation_file(path: str, table_name: str) -> List[Statement]:
     if uid_col is None or len(rows) == 0:
         warnings.warn('Possibly misformatted file: ' + path)
         return []
+    if dep_col is None:
+        warnings.warn('NO DEP COLUMN : ' + path)
 
     statements=[]
     for row_i, row in enumerate(rows):
         #print(header_skip)
         #print(header_fill)
+        if dep_col is not None:
+            if len(row[dep_col].strip())>0:
+                pass      # Not ignoring lines : 
+                # {'statements': 13043, 'questions': 496}
+                # baseline_retreival MAP:  0.437252217579726
+                print(f"Skipping row '{row[dep_col]}':\n", row)
+                continue  # With ignoring these lines : 
+                # {'statements': 12045, 'questions': 496}
+                # baseline_retreival MAP:  0.4586891839624746
+
         # Convert this single row into the combo rows
         combo_row = [ ([''] if header_skip[col_i] else cell.split(';')) for col_i, cell in enumerate(row) ]
         #print( combo_row )
