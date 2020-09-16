@@ -662,14 +662,14 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         return qa.flags in "success|ready".split('|')
 
     statement_from_uid = { s.uid:s for s in statements }
-    def statement_desc(s):
+    def statement_desc(s, reason):
         meta=''
         #if 'that something' in s.raw_txt or 'that object' in s.raw_txt:
         if 'that' in s.raw_txt:
             meta='*'
             #print(s.raw_txt)
         #if s.table=='KINDOF':
-        return meta+s.table
+        return f"{meta}{s.table}.{reason}"
 
     # Now got through the questions, and chart out the 'hits', 
     #   And analyse the 'misses'
@@ -679,6 +679,8 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         cnt+=1
         gold=set(e.uid for e in qa.explanation_gold)
         p=preds[qa.question_id]
+
+        uid_to_reason={ e.uid:e.reason for e in qa.explanation_gold}
 
         score = silent_average_precision_score(list(gold), p)
         sc_tot+=score
@@ -698,12 +700,13 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
                 hits.append('-')
         miss=[]
         for j in remaining:
+            reason = uid_to_reason[j]
             try:
-                miss.append(p.index(j))
+                miss.append( (p.index(j), reason)  )
             except:
-                miss.append(-1) # Missing in predictions
+                miss.append( (-1, reason) ) # Missing in predictions
         miss=sorted(miss)
-        misses = ','.join(f"{m:d}" for m in miss)
+        misses = ','.join(f"{m[0]:d}" for m in miss)
 
         #score_max = silent_average_precision_score(list(gold), list(gold)[:])
         score_max = ( len(gold)-len(remaining) )/len(gold)
@@ -715,13 +718,14 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
 
         s_table=['[']
         for uid in found:  # in order they were found
-            s_table.append( statement_desc( statement_from_uid[uid] ) )
+            reason = uid_to_reason[uid]
+            s_table.append( statement_desc( statement_from_uid[uid], reason ) )
         s_table.append(']')
-        for j in miss:   # in order they were missed
+        for j,reason in miss:   # in order they were missed
             if j<0:
-                s_table.append( "missing" )    
+                s_table.append( f"missing.{reason}" )    
             else:
-                s_table.append( statement_desc( statement_from_uid[p[j]] ) )
+                s_table.append( statement_desc( statement_from_uid[p[j]], reason ) )
         print(f"   #{qa_i:4d} = {qa.question_id} :: "+' '.join(s_table))
     print(f"{sc_tot/cnt:.4f} {sc_trunc_tot/cnt:.4f} {sc_max_tot/cnt:.4f}")
     

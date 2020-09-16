@@ -20,8 +20,8 @@ fi
 
 pip3 install -r requirements.txt
 pip3 install -r ${TASK_REPO}/requirements.txt   # Already included in this repo
-python3 -m spacy download en_core_web_sm   #12Mb
-python3 -m spacy download en_core_web_lg  # For vectorizers.SpacyVectorizer
+python3 -m spacy download en_core_web_sm   # 12Mb
+#python3 -m spacy download en_core_web_lg   # 868Mb For vectorizers.SpacyVectorizer
 
 pushd ${TASK_REPO}
     make dataset   # Downloads ~1Mb, and expands it out into the tables/*.tsv files, etc
