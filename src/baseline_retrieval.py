@@ -25,7 +25,7 @@ from dataset import (
 )
 from extra_data import SplitEnum
 from losses import APLoss
-from rankers import Ranker, WordEmbedRanker, deduplicate
+from rankers import Ranker, StageRanker, WordEmbedRanker, deduplicate
 from vectorizers import BM25Vectorizer, SpacyVectorizer
 
 sys.path.append("../tg2020task")

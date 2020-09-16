@@ -8,6 +8,8 @@ import numpy as np
 import scipy.sparse as sp
 import spacy
 import torch
+from flair.data import Sentence, Token as FlairToken
+from flair.embeddings import TransformerWordEmbeddings
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import (
@@ -176,3 +178,21 @@ class SpacyVectorizer(TfidfVectorizer):
 
     def transform(self, texts: List[str], copy="deprecated") -> List[List[Tensor]]:
         return [self.doc_to_vecs(d) for d in self.nlp.pipe(texts)]
+
+
+class FlairVectorizer(TfidfVectorizer):
+    def __init__(self):
+        super().__init__()
+        self.embedder = TransformerWordEmbeddings(
+            "bert-base-uncased", batch_size=128, layers="-1"
+        )
+
+    def fit(self, texts: List[str], y=None):
+        pass
+
+    def transform(self, texts: List[str], copy="deprecated") -> List[List[Tensor]]:
+        sentences = [Sentence(_) for _ in texts]
+        self.embedder.embed(sentences)
+
+        tok: FlairToken
+        return [[tok.embedding for tok in s] for s in sentences]

@@ -135,6 +135,7 @@ class WordEmbedRanker(Ranker):
     def pad_embeds(self, embeds: List[List[Tensor]]) -> Tuple[Tensor, Tensor]:
         lengths = [len(_) for _ in embeds]
         dim = len(embeds[0][0])
+        print("WordEmbedRanker: Embeds dim:", dim)
         x = torch.zeros(len(embeds), max(lengths), dim, device=self.device)
         mask = torch.zeros(len(embeds), max(lengths), device=self.device)
 
@@ -172,7 +173,7 @@ class WordEmbedRanker(Ranker):
         scores = torch.zeros(len(embeds_q), len(embeds_s), device=self.device)
 
         for i, lst in tqdm(enumerate(embeds_q), total=len(embeds_q)):
-            q = torch.from_numpy(np.stack(lst)).float().to(self.device)
+            q = torch.stack(lst).to(self.device)
             scores[i] = self.run_max_sim(q, x, mask)
 
         scores_numpy = scores.cpu().numpy()
