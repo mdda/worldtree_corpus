@@ -132,8 +132,11 @@ class BM25Vectorizer(TfidfVectorizer):
     Best results if text has already gone through stopword removal and lemmatization
     """
 
-    def __init__(self):
-        self.vec = make_pipeline(CountVectorizer(binary=True), MyBM25Transformer(),)
+    def __init__(self, binary=True, use_idf=True, k1=2.0, b=0.75):
+        self.vec = make_pipeline(
+            CountVectorizer(binary=binary),
+            MyBM25Transformer(use_idf=use_idf, k1=k1, b=b),
+        )
         super().__init__()
 
     def fit(self, raw_documents, y=None):

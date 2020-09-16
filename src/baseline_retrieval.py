@@ -25,8 +25,8 @@ from dataset import (
 )
 from extra_data import SplitEnum
 from losses import APLoss
-from rankers import Ranker, StageRanker, WordEmbedRanker, deduplicate
-from vectorizers import BM25Vectorizer, SpacyVectorizer
+from rankers import Ranker, StageRanker, IterativeRanker, deduplicate
+from vectorizers import BM25Vectorizer, TruncatedSVDVectorizer
 
 sys.path.append("../tg2020task")
 import evaluate
@@ -245,7 +245,7 @@ class ResultAnalyzer(BaseModel):
 
         return sum(scores) / len(scores)
 
-    def run_map_loss(self, data: Data, preds: List[Prediction]):
+    def run_map_loss(self, data: Data, preds: List[Prediction]) -> float:
         qns, preds = self.filter_qns(data, preds)
         uids = deduplicate([s.uid_base for s in data.statements])
         print(len(uids))
@@ -271,6 +271,7 @@ class ResultAnalyzer(BaseModel):
             torch.from_numpy(array_pred).float(), torch.from_numpy(array_gold).float()
         )
         print(dict(map_loss=loss.item()))
+        return loss.item()
 
     def run(self, data: Data, preds: List[Prediction]):
         self.run_map_loss(data, preds)
@@ -279,47 +280,48 @@ class ResultAnalyzer(BaseModel):
             print(dict(threshold=threshold, recall=recall))
 
 
-class WordEmbedRetriever(Retriever):
-    preproc: TextProcessor = SpacyProcessor(remove_stopwords=True)
-    vectorizer: TfidfVectorizer = SpacyVectorizer()
-    ranker: Ranker = WordEmbedRanker()
-
-
 def main(data_split=SplitEnum.dev):
     data = Data(data_split=data_split)
     data.load()
     data.analyze()
 
-    # retriever = Retriever()  # Dev MAP=0.3965, recall@512=0.7911
-    # retriever = Retriever(preproc=SpacyProcessor())  # Dev MAP=0.4587, recall@512=0.8849
-    # retriever = Retriever(
-    #     preproc=SpacyProcessor(remove_stopwords=True)
-    # )  # Dev MAP=0.4615, recall@512=0.8780
-    # retriever = Retriever(preproc=KeywordProcessor())  # Dev MAP=0.4529, recall@512=0.8755
-    # retriever = Retriever(
-    #     preproc=KeywordProcessor(), ranker=StageRanker()
-    # )  # Dev MAP=0.4575, recall@512=0.9095
-
-    # # Maybe this dense vectorizer can make useful features for deep learning methods
-    # from vectorizers import TruncatedSVDVectorizer
-    # retriever = Retriever(
-    #     vectorizer=TruncatedSVDVectorizer(BM25Vectorizer(), n_components=768),
-    #     preproc=KeywordProcessor(),
-    # )  # Dev MAP:  0.3741, recall@512= 0.8772
-
-    if False:
-        retriever = Retriever(
+    retrievers = [
+        Retriever(),  # Dev MAP=0.3965, recall@512=0.7911
+        Retriever(preproc=SpacyProcessor()),  # Dev MAP=0.4587, recall@512=0.8849
+        Retriever(
+            preproc=SpacyProcessor(remove_stopwords=True)
+        ),  # Dev MAP=0.4615, recall@512=0.8780
+        Retriever(preproc=KeywordProcessor()),  # Dev MAP=0.4529, recall@512=0.8755
+        Retriever(
+            preproc=KeywordProcessor(), ranker=StageRanker()
+        ),  # Dev MAP=0.4575, recall@512=0.9095
+        # Maybe this dense vectorizer can make useful features for deep learning methods
+        Retriever(
+            vectorizer=TruncatedSVDVectorizer(BM25Vectorizer(), n_components=768),
+            preproc=KeywordProcessor(),
+        ),  # Dev MAP:  0.3741, recall@512= 0.8772
+        Retriever(
             preproc=KeywordProcessor(), ranker=IterativeRanker()
-        )  # Dev MAP=0.4704, recall@512=0.8910
-    if True:
-        retriever = Retriever(
+        ),  # Dev MAP=0.4704, recall@512=0.8910
+        Retriever(
             preproc=KeywordProcessor(),
             ranker=StageRanker(num_per_stage=[16, 32, 64, 128], scale=1.5),
-        )  # Dev MAP=0.4586, recall@512=0.9242
-
-    # retriever = WordEmbedRetriever()  # Dev MAP=0.01436, recall@512=0.4786
-
-    preds = retriever.run(data)
+        ),  # Dev MAP=0.4586, recall@512=0.9242
+        # Loading SpacyVectorizer has an annoying delay
+        # Retriever(
+        #     preproc=SpacyProcessor(remove_stopwords=True),
+        #     vectorizer=SpacyVectorizer(),
+        #     ranker=WordEmbedRanker(),
+        # ),  # Dev MAP=0.01436, recall@512=0.4786
+        # From hyperopt_retrieval.py
+        Retriever(
+            preproc=SpacyProcessor(remove_stopwords=True),
+            ranker=StageRanker(num_per_stage=[1, 2, 4, 8, 16], scale=1.25),
+            vectorizer=BM25Vectorizer(binary=True, use_idf=True, k1=2.0, b=0.5),
+        ),  # Dev MAP=0.4861, recall@512=0.9345
+    ]
+    r = retrievers[-1]
+    preds = r.run(data)
     Scorer().run(data.path_gold, preds)
     ResultAnalyzer().run(data, preds)
 
