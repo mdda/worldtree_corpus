@@ -12,6 +12,8 @@ if [ ! -d "$TASK_REPO" ]; then
     git clone https://github.com/cognitiveailab/${TASK_REPO}.git
 fi
 
+mkdir -p ./predictions
+
 VENV=env3
 if [ ! -d "$VENV" ]; then
     virtualenv --system-site-packages ${VENV}
