@@ -1,13 +1,16 @@
 import os
 from collections import Counter
+from enum import Enum
 from pathlib import Path
 from typing import List, Tuple, Set, Callable, Any, Dict
 
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from comet_ml import BaseExperiment
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import CometLogger
 from torch import Tensor, nn
 from torch.optim import Optimizer
@@ -32,6 +35,7 @@ from baseline_retrieval import (
     SpacyProcessor,
     Prediction,
     ResultAnalyzer,
+    Scorer,
 )
 from dataset import QuestionAnswer, ExplanationUsed
 from extra_data import SplitEnum, analyze_lengths
@@ -40,15 +44,21 @@ from rankers import StageRanker
 from vectorizers import BM25Vectorizer
 
 
+class NetEnum(str, Enum):
+    transformer = "transformer"
+    rnn = "rnn"
+    dense = "dense"
+
+
 class Config(BaseModel):
     bs: int = 1
     top_n: int = 128
     model_name: str = "distilbert-base-uncased"
     num_labels: int = 1
 
-    net_features_type: str = "transformer"
+    net_features_type: NetEnum = NetEnum.transformer
 
-    net_ranker_type: str = "rnn"
+    net_ranker_type: NetEnum = NetEnum.rnn
     net_ranker_num_layers: int = 1
     net_ranker_input_size: int = 768
     net_ranker_hidden_size: int = 128
@@ -78,6 +88,18 @@ class RankerNet(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         raise NotImplementedError
+
+
+class DenseRankerNet(RankerNet):
+    def __init__(self, config: Config):
+        super().__init__()
+        self.linear = nn.Linear(config.net_ranker_input_size, 1)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x.unsqueeze(dim=0)
+        x = self.linear(x)
+        x = x.squeeze(dim=-1)
+        return x
 
 
 class RnnRankerNet(RankerNet):
@@ -161,10 +183,12 @@ class HierarchicalRankerNet(nn.Module):
 
 
 def make_net(config: Config) -> nn.Module:
-    net_ranker = dict(
-        rnn=RnnRankerNet(config), transformer=TransformerRankerNet(config)
-    )[config.net_ranker_type]
-    net_features = dict(transformer=TransformerFeatureNet(config))[
+    net_ranker = {
+        NetEnum.rnn: RnnRankerNet(config),
+        NetEnum.transformer: TransformerRankerNet(config),
+        NetEnum.dense: DenseRankerNet(config),
+    }[config.net_ranker_type]
+    net_features = {NetEnum.transformer: TransformerFeatureNet(config)}[
         config.net_features_type
     ]
     net = HierarchicalRankerNet(net_features, net_ranker)
@@ -239,44 +263,37 @@ class RerankDataset(Dataset):
         self, p: Prediction, q: QuestionAnswer
     ) -> Tuple[List[str], Set[str]]:
         # Add missing gold uids but also maintain relative ordering
+        # Cancel last: Don't add missing gold, just take top_n first to avoid complications
         e: ExplanationUsed
-        uids_gold = set()
+        return p.uids[: self.top_n], set([e.uid for e in q.explanation_gold])
+
+    def pred_to_texts(self, p: Prediction, top_n: int) -> List[str]:
+        return [self.uid_to_text[u] for u in p.uids[:top_n]]
+
+    def qn_to_explains(self, q: QuestionAnswer) -> List[str]:
+        explains = []
         for e in q.explanation_gold:
-            if e.uid in self.uid_to_text.keys():
-                uids_gold.add(e.uid)
+            text = self.uid_to_text.get(e.uid)
+            if text is None:
+                print(dict(qn_explain_not_found=e.uid))
             else:
-                # Only 1 case in train set: b4d1-4fcf-d14e-cb3b (dev set none)
-                print(dict(uid_not_in_uid_to_text=e.uid))
-        assert uids_gold
-
-        uids = []
-        num_distractor = 0
-        for u in p.uids:
-            if u in uids_gold:
-                uids.append(u)
-            elif num_distractor + len(uids_gold) < self.top_n:
-                uids.append(u)
-                num_distractor += 1
-
-        assert len(uids) == self.top_n
-        assert uids_gold.issubset(uids)
-        return uids, uids_gold
+                explains.append(text)
+        return explains
 
     def load(self) -> List[Example]:
         preds, qns = self.preds_and_qns
         examples = []
         for p, q in zip(preds, qns):
-            uids, uids_gold = self.truncate_uids(p, q)
-            examples.append(
-                Example(
-                    query=self.qn_to_text(q),
-                    docs=[self.uid_to_text[u] for u in uids],
-                    labels=[int(u in uids_gold) for u in uids],
-                )
-            )
+            docs_gold = set(self.qn_to_explains(q))
+            docs = self.pred_to_texts(p, self.top_n)
+            labels = [int(d in docs_gold) for d in docs]
+            if sum(labels) == 0:
+                print(dict(no_hits_in_top_n=q.question_id))
+                continue
+            examples.append(Example(query=self.qn_to_text(q), docs=docs, labels=labels))
         return examples
 
-    def make_tokens(self, texts_a: List[str], texts_b) -> BatchEncoding:
+    def make_tokens(self, texts_a: List[str], texts_b: List[str]) -> BatchEncoding:
         return self.tokenizer(texts_a, texts_b, padding=True, return_tensors="pt")
 
     def __getitem__(self, i: int) -> Example:
@@ -331,7 +348,11 @@ def test_dataset(data_split=SplitEnum.dev, config=Config()):
 
     # Num workers is not too important: default(0) -> 49 it/s, 4 -> 79 it/s but bottleneck is likely model
     loader = DataLoader(
-        dataset, batch_size=config.bs, shuffle=False, collate_fn=dataset.collate_fn,
+        dataset,
+        batch_size=config.bs,
+        shuffle=False,
+        collate_fn=dataset.collate_fn,
+        num_workers=os.cpu_count(),
     )
     limit = 100
     for i, _ in tqdm(enumerate(loader), total=limit):
@@ -343,6 +364,57 @@ def test_dataset(data_split=SplitEnum.dev, config=Config()):
     assert tuple(labels.shape) == (config.bs, num_seq)
     test_net(inputs=inputs, labels=labels, config=config)
     dataset.analyze()
+
+
+class RerankRetriever(Retriever):
+    """
+    Run base retriever on data to get preds
+    For each query, pred
+        Get query-doc pair texts for top_n
+        Tokenize
+        Feed to model to get new scores for top_n
+        Re-rank top_n by scores
+    Re-run scorer/analyzer
+    """
+
+    base_retriever: Retriever = get_retriever()
+    net: HierarchicalRankerNet
+    dataset: RerankDataset
+    top_n: int
+    device: str = "cuda"
+
+    def run_qn(
+        self, q: QuestionAnswer, p: Prediction, net: HierarchicalRankerNet
+    ) -> Tensor:
+        query = self.dataset.qn_to_text(q)
+        docs = self.dataset.pred_to_texts(p, top_n=self.top_n)
+        ex = Example(query=query, docs=docs, labels=[0] * len(docs))
+        x: BatchEncoding
+        x, y = self.dataset.collate_fn([ex])
+        x = x.to(self.device)
+        with torch.no_grad():
+            scores = net(x)
+
+        assert tuple(scores.shape) == (1, len(docs))
+        scores = torch.squeeze(scores, dim=0)
+        return scores
+
+    def run(self, data: Data) -> List[Prediction]:
+        preds = self.base_retriever.run(data)
+        assert len(preds) == len(data.questions)
+        scores = torch.zeros(len(preds), self.top_n, device=self.device)
+        net = self.net.eval().to(self.device)
+
+        for i, q in tqdm(enumerate(data.questions)):
+            scores[i] = self.run_qn(q, preds[i], net)
+        distances = np.multiply(scores.cpu().numpy(), -1)
+        reranking = np.argsort(distances, axis=-1)
+
+        for i, p in enumerate(preds):
+            uids_rerank = [p.uids[: self.top_n][j] for j in reranking[i]]
+            assert len(uids_rerank) == self.top_n
+            p.uids[: self.top_n] = uids_rerank
+        return preds
 
 
 class System(pl.LightningModule):
@@ -477,36 +549,55 @@ class System(pl.LightningModule):
         return self.make_loader(self.ds_dev, shuffle=False)
 
 
-def get_logger(save_dir: str, path_dotenv: str) -> CometLogger:
+def get_logger(path_dotenv: str) -> CometLogger:
     load_dotenv(path_dotenv)
     assert os.getenv("COMET_KEY") is not None
     return CometLogger(
         api_key=os.getenv("COMET_KEY"),
         workspace=os.getenv("COMET_WORKSPACE"),  # Optional
         project_name=os.getenv("COMET_PROJECT"),  # Optional
-        save_dir=save_dir,
+        save_dir="/tmp/comet_logger",
         # rest_api_key=os.environ["COMET_REST_KEY"], # Optional
         # experiment_name=input("Enter Experiment Name:"),  # Optional
     )
 
 
-def run_train(logger: CometLogger):
+def run_train(save_dir: str, logger: CometLogger):
     config = Config()
     system = System(**config.dict())
-
+    callback = ModelCheckpoint(filepath=save_dir, verbose=True,)
     trainer = pl.Trainer(
+        checkpoint_callback=callback,
         logger=logger,
         max_epochs=config.num_epochs,
         overfit_batches=config.overfit_pct,
         gpus=1,
     )  # precision=16 is not faster on P100
     trainer.fit(system)
+    print(callback.best_model_path, callback.best_model_score)
 
 
-def main(save_dir="/tmp/comet_logger", path_dotenv="../excluded/.env"):
+def run_eval(save_dir: str, data_split=SplitEnum.dev):
+    path = list(Path(save_dir).glob("*.ckpt"))[0]
+    print(path)
+    # callback = ModelCheckpoint(filepath=save_dir, verbose=True,)
+    # print(callback.best_model_path, callback.best_model_score)
+
+    system = System.load_from_checkpoint(str(path))
+    ds = system.make_dataset(data_split)
+    retriever = RerankRetriever(net=system.net, dataset=ds, top_n=system.config.top_n,)
+
+    data = ds.data
+    preds = retriever.run(data)
+    Scorer().run(data.path_gold, preds)
+    ResultAnalyzer().run(data, preds)
+
+
+def main(save_dir="/tmp/checkpoints", path_dotenv="../excluded/.env"):
     if not Path(save_dir).exists():
-        logger = get_logger(save_dir, path_dotenv)
-        run_train(logger)
+        logger = get_logger(path_dotenv)
+        run_train(save_dir, logger)
+    run_eval("/tmp")
 
 
 if __name__ == "__main__":

@@ -207,7 +207,7 @@ class Scorer(BaseModel):
 
 
 class ResultAnalyzer(BaseModel):
-    thresholds: List[int] = [32, 64, 128, 256, 512, 1024]
+    thresholds: List[int] = [64, 128, 256, 512]
     loss_fn: nn.Module = APLoss()
 
     class Config:
@@ -250,7 +250,6 @@ class ResultAnalyzer(BaseModel):
     ) -> float:
         qns, preds = self.filter_qns(data, preds)
         uids = deduplicate([s.uid_base for s in data.statements])
-        print(len(uids))
         uid_to_i = {u: i for i, u in enumerate(uids)}
         array_gold = np.zeros(shape=(len(preds), len(uids)))
         array_pred = np.copy(array_gold)
@@ -263,11 +262,10 @@ class ResultAnalyzer(BaseModel):
                 else:
                     print(dict(uid_not_in_statements=e.uid))
 
+        scores = np.divide(1, np.arange(len(uids)) + 1)  # [1, 0.5, 0.3, 0.25 ... 0]
         for i, p in enumerate(preds):
-            for j, u in enumerate(p.uids):
-                score = 1 / (j + 1)  # First item has highest score
-                assert 0.0 <= score <= 1.0
-                array_pred[i, uid_to_i[u]] = score
+            indices = [uid_to_i[u] for u in p.uids]
+            array_pred[i, indices] = scores
 
         if top_n is not None:
             array_pred[:, :top_n] = 0.0
@@ -275,14 +273,33 @@ class ResultAnalyzer(BaseModel):
         loss: Tensor = self.loss_fn(
             torch.from_numpy(array_pred).float(), torch.from_numpy(array_gold).float()
         )
-        print(dict(map_loss=loss.item()))
         return loss.item()
 
+    @staticmethod
+    def count_qns_no_hits(data: Data, preds: List[Prediction], top_n: int) -> int:
+        count = 0
+        for q, p in zip(data.questions, preds):
+            uids_gold = set([e.uid for e in q.explanation_gold])
+            if not uids_gold.intersection(p.uids[:top_n]):
+                count += 1
+        return count
+
     def run(self, data: Data, preds: List[Prediction]):
-        self.run_map_loss(data, preds)
+        records = []
         for threshold in self.thresholds:
             recall = self.run_threshold(data, preds, threshold)
-            print(dict(threshold=threshold, recall=recall))
+            qns_no_hits = self.count_qns_no_hits(data, preds, threshold)
+            map_loss = self.run_map_loss(data, preds, threshold)
+            records.append(
+                dict(
+                    threshold=threshold,
+                    recall=recall,
+                    qns_no_hits=qns_no_hits,
+                    map_loss=map_loss,
+                )
+            )
+        df = pd.DataFrame(records)
+        print(df)
 
 
 def main(data_split=SplitEnum.dev):
