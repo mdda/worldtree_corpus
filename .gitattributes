@@ -1,0 +1,9 @@
+# Did you do this for your copy of this repo yet?
+#
+# cd . # i.e. where this file is
+# . ~/env3/bin/activate 
+# pip install -U nbstripout 
+# nbstripout --install 
+
+*.ipynb filter=nbstripout
+*.ipynb diff=ipynb
