@@ -831,22 +831,7 @@ if '__main__' == __name__:
     DONE : Hypothesis : Outlier statements are meta statements :: NOT PROVEN
     NOPE : Write meta-statement classifier, and add a tag/market to add as a keyword
 
-    DONE : Have a look at how to do graph linkage directly : shortest paths
-    DONE : Have a look at how to do graph linkage directly : characterise linkages
-
-    Check whether pure spacy lemmatisation of statements is a win (rather than within columns with SKIPs)
-
-    MAP loss code (which framework?)
-    Create model with List[Statement] input and List[Statement] output
-    Embed for table_id
-    Add LSTM layer(s) -> MAP loss
-    Add attention on top -> MAP loss
-
-    Graph embedding (two-hop?)
-    Differentiable graph embedding
-    Embedding for each statment, question, answer[i]
-
-
+    Have a look at how to do graph linkage directly
 
 
     Create Q&A dataset fancier preproc : MoveStatmentsFromQuestion

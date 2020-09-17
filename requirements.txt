@@ -21,5 +21,3 @@ transformers==3.1.0
 virtualenv==20.0.31
 wikiextractor==0.1
 xmltodict==0.12.0
-
-nbstripout
