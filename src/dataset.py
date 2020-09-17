@@ -671,6 +671,12 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         #if s.table=='KINDOF':
         return f"{meta}{s.table}.{reason}"
 
+    reasons='CENTRAL|GROUNDING|LEXGLUE|ROLE|BACKGROUND|NE|NEG'.split('|')
+    reason_cnt = { reason:[0,0] for reason in reasons}  # (hit,miss)
+
+    reason_to_table_cnt={ reason:dict() for reason in reasons} # dict()=(table->cnt)
+    tables=set()
+
     # Now got through the questions, and chart out the 'hits', 
     #   And analyse the 'misses'
     cnt, sc_tot, sc_trunc_tot, sc_max_tot=0, 0.,0.,0.
@@ -680,7 +686,13 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         gold=set(e.uid for e in qa.explanation_gold)
         p=preds[qa.question_id]
 
-        uid_to_reason={ e.uid:e.reason for e in qa.explanation_gold}
+        uid_to_reason={ e.uid:e.reason for e in qa.explanation_gold }
+        for e in qa.explanation_gold:
+            t=statement_from_uid[e.uid].table
+            tables.add(t)
+            counts=reason_to_table_cnt[e.reason]
+            if not t in counts: counts[t]=0
+            counts[t]+=1
 
         score = silent_average_precision_score(list(gold), p)
         sc_tot+=score
@@ -690,10 +702,11 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         hits, found, remaining=[], [], gold.copy()
         for i in range(limit):
             if i<len(p):
-                if p[i] in gold:
+                uid = p[i]
+                if uid in gold:
                     hits.append('X')
-                    remaining.remove(p[i])
-                    found.append(p[i])
+                    remaining.remove(uid)
+                    found.append(uid)
                 else:
                     hits.append('.')
             else:
@@ -720,15 +733,30 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         for uid in found:  # in order they were found
             reason = uid_to_reason[uid]
             s_table.append( statement_desc( statement_from_uid[uid], reason ) )
+            reason_cnt[reason][0]+=1
+
         s_table.append(']')
         for j,reason in miss:   # in order they were missed
             if j<0:
                 s_table.append( f"missing.{reason}" )    
             else:
                 s_table.append( statement_desc( statement_from_uid[p[j]], reason ) )
+            reason_cnt[reason][1]+=1
+
         print(f"   #{qa_i:4d} = {qa.question_id} :: "+' '.join(s_table))
-    print(f"{sc_tot/cnt:.4f} {sc_trunc_tot/cnt:.4f} {sc_max_tot/cnt:.4f}")
+    print(f"{sc_tot/cnt:.4f} {sc_trunc_tot/cnt:.4f} {sc_max_tot/cnt:.4f}:max (limit={limit:d})")
     
+    for reason in reasons:
+        hit, miss = reason_cnt[reason]
+        tot=hit+miss
+        print(f"{reason:>12s}({tot:4d}): {hit/tot*100.:.2f}% hit : {miss/tot*100.:.2f}% miss")
+
+    print(f"{' '*34} "+''.join(f"{reason[:5]:>8s}" for reason in reasons))
+    for t in sorted(list(tables)):
+        tot = sum(reason_to_table_cnt[reason].get(t,0) for reason in reasons)
+        print(f"{t:>30s} {tot:4d}"+''.join(f"{reason_to_table_cnt[reason].get(t, 0)/tot*100.:8.2f}" for reason in reasons))
+            
+
 if '__main__' == __name__:
     if False:
         run_average_precision_sanity_check()
