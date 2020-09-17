@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sklearn.feature_extraction.text import TfidfVectorizer
 from spacy.lang.en import English
 from spacy.tokens import Token
-from torch import nn, Tensor
+from torch import nn
 from torchvision.datasets.utils import download_and_extract_archive
 from tqdm import tqdm
 
@@ -176,17 +176,27 @@ class KeywordProcessor(TextProcessor):
         return " ".join(x.keywords)
 
 
+def write_preds(preds: List[Prediction], path: str, sep="\n"):
+    lines = [x for p in preds for x in p.lines]
+    with open(path, "w") as f:
+        f.write(sep.join(lines))
+    # assert [p.dict() for p in preds] == [p.dict() for p in read_preds(path)]
+
+
+def read_preds(path: str, sep="\t") -> List[Prediction]:
+    qid_to_uids = {}
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            qid, uid = line.split(sep)
+            qid_to_uids.setdefault(qid, []).append(uid)
+    preds = [Prediction(qid=qid, uids=uids) for qid, uids in qid_to_uids.items()]
+    return preds
+
+
 class Scorer(BaseModel):
-    root: str = "/tmp/scorer"
-    sep: str = "\n"
-
-    def run(self, path_gold: Path, preds: List[Prediction]):
-        lines = [x for p in preds for x in p.lines]
-        path_predict = Path(self.root) / "predict.txt"
-        path_predict.parent.mkdir(exist_ok=True)
-        with open(path_predict, "w") as f:
-            f.write(self.sep.join(lines))
-
+    @staticmethod
+    def run(path_gold: Path, path_predict: Path):
         gold = evaluate.load_gold(str(path_gold))
         pred = evaluate.load_pred(str(path_predict))
         # print(len(gold), len(pred))  # 410 496
@@ -249,31 +259,22 @@ class ResultAnalyzer(BaseModel):
         self, data: Data, preds: List[Prediction], top_n: int = None
     ) -> float:
         qns, preds = self.filter_qns(data, preds)
-        uids = deduplicate([s.uid_base for s in data.statements])
-        uid_to_i = {u: i for i, u in enumerate(uids)}
-        array_gold = np.zeros(shape=(len(preds), len(uids)))
-        array_pred = np.copy(array_gold)
+        if top_n is None:
+            top_n = len(preds[0].uids)
+        losses = []
+
+        scores = torch.div(1.0, torch.arange(top_n) + 1)  # [1, 0.5, 0.3  ... 0]
+        scores = torch.unsqueeze(scores, dim=0)
 
         for i, q in enumerate(qns):
-            for e in q.explanation_gold:
-                j = uid_to_i.get(e.uid)
-                if j is not None:
-                    array_gold[i, j] = 1
-                else:
-                    print(dict(uid_not_in_statements=e.uid))
-
-        scores = np.divide(1, np.arange(len(uids)) + 1)  # [1, 0.5, 0.3, 0.25 ... 0]
-        for i, p in enumerate(preds):
-            indices = [uid_to_i[u] for u in p.uids]
-            array_pred[i, indices] = scores
-
-        if top_n is not None:
-            array_pred[:, :top_n] = 0.0
-
-        loss: Tensor = self.loss_fn(
-            torch.from_numpy(array_pred).float(), torch.from_numpy(array_gold).float()
-        )
-        return loss.item()
+            uids = preds[i].uids[:top_n]
+            uids_gold = set([e.uid for e in q.explanation_gold])
+            labels = [int(u in uids_gold) for u in uids]
+            if sum(labels) == 0:
+                continue
+            loss = self.loss_fn(scores, torch.Tensor(labels).unsqueeze(dim=0))
+            losses.append(loss.item())
+        return sum(losses) / len(losses)
 
     @staticmethod
     def count_qns_no_hits(data: Data, preds: List[Prediction], top_n: int) -> int:
@@ -286,7 +287,7 @@ class ResultAnalyzer(BaseModel):
 
     def run(self, data: Data, preds: List[Prediction]):
         records = []
-        for threshold in self.thresholds:
+        for threshold in self.thresholds + [len(preds[0].uids)]:
             recall = self.run_threshold(data, preds, threshold)
             qns_no_hits = self.count_qns_no_hits(data, preds, threshold)
             map_loss = self.run_map_loss(data, preds, threshold)
@@ -302,12 +303,14 @@ class ResultAnalyzer(BaseModel):
         print(df)
 
 
-+#def main(data_split=SplitEnum.train):
-def main(data_split=SplitEnum.dev):
-+#def main(data_split=SplitEnum.test):
+def main(
+    data_split=SplitEnum.dev,
+    output_pattern="../predictions/predict.FOLD.baseline-retrieval.txt",
+):
     data = Data(data_split=data_split)
     data.load()
     data.analyze()
+    path_predict = output_pattern.replace("FOLD", data_split)
 
     retrievers = [
         Retriever(),  # Dev MAP=0.3965, recall@512=0.7911
@@ -346,8 +349,10 @@ def main(data_split=SplitEnum.dev):
     ]
     r = retrievers[-1]
     preds = r.run(data)
-    Scorer().run(data.path_gold, preds)
-    ResultAnalyzer().run(data, preds)
+    write_preds(preds, path_predict)
+    if data_split != SplitEnum.test:
+        Scorer().run(data.path_gold, Path(path_predict))
+        ResultAnalyzer().run(data, preds)
 
 
 if __name__ == "__main__":
