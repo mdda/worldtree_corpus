@@ -245,7 +245,9 @@ class ResultAnalyzer(BaseModel):
 
         return sum(scores) / len(scores)
 
-    def run_map_loss(self, data: Data, preds: List[Prediction]) -> float:
+    def run_map_loss(
+        self, data: Data, preds: List[Prediction], top_n: int = None
+    ) -> float:
         qns, preds = self.filter_qns(data, preds)
         uids = deduplicate([s.uid_base for s in data.statements])
         print(len(uids))
@@ -266,6 +268,9 @@ class ResultAnalyzer(BaseModel):
                 score = 1 / (j + 1)  # First item has highest score
                 assert 0.0 <= score <= 1.0
                 array_pred[i, uid_to_i[u]] = score
+
+        if top_n is not None:
+            array_pred[:, :top_n] = 0.0
 
         loss: Tensor = self.loss_fn(
             torch.from_numpy(array_pred).float(), torch.from_numpy(array_gold).float()
