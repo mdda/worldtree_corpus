@@ -302,7 +302,9 @@ class ResultAnalyzer(BaseModel):
         print(df)
 
 
++#def main(data_split=SplitEnum.train):
 def main(data_split=SplitEnum.dev):
++#def main(data_split=SplitEnum.test):
     data = Data(data_split=data_split)
     data.load()
     data.analyze()
