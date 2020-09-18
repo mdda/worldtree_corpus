@@ -798,11 +798,10 @@ if '__main__' == __name__:
             qa_display_keywords(qanda_dev[i], statements=statements)
             qa_display_relatedness(qanda_dev[i], statements=statements)
 
-    #analyse_outliers(32, statements, qanda_dev, '/tmp/scorer/predict.txt')
-    analyse_outliers(64, statements, qanda_dev, '/tmp/scorer/predict.txt')
-    #analyse_outliers(64, statements, qanda_dev, '../predictions/predict_baseline-retrieval.txt')
-    #analyse_outliers(64, statements, qanda_dev, '../predictions/predict_graph-all-to-all.txt')
-    #analyse_outliers(64, statements, qanda_dev, '../predictions/predict_graph-q-to-a.txt')
+    analyse_outliers(64, statements, qanda_dev, '../predictions/predict.dev.baseline-retrieval.txt')
+    #analyse_outliers(64, statements, qanda_dev, '../predictions/predict.dev.baseline-retrieval_plus-tables.txt')
+    #analyse_outliers(64, statements, qanda_dev, '../predictions/predict.dev.graph-all-to-all.txt')
+    #analyse_outliers(64, statements, qanda_dev, '../predictions/predict.dev.graph-q-to-a.txt')
 
 
     """
