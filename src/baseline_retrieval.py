@@ -73,10 +73,6 @@ class Prediction(BaseModel):
     scores: Optional[List[float]]
     sep: str = "\t"
 
-    @property
-    def lines(self) -> List[str]:
-        return [self.sep.join([self.qid, p]) for p in self.uids]
-
 
 class TextProcessor(BaseModel):
     def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
@@ -176,43 +172,51 @@ class KeywordProcessor(TextProcessor):
         return " ".join(x.keywords)
 
 
-def write_preds(preds: List[Prediction], path: str, sep="\n"):
-    lines = [x for p in preds for x in p.lines]
-    with open(path, "w") as f:
-        f.write(sep.join(lines))
-    # assert [p.dict() for p in preds] == [p.dict() for p in read_preds(path)]
+class PredictManager(BaseModel):
+    file_pattern: str
+    fold_marker: str = "FOLD"
+    sep_line: str = "\n"
+    sep_field: str = "\t"
 
+    def make_path(self, data_split: str) -> Path:
+        assert self.file_pattern.count(self.fold_marker) == 1
+        path = Path(self.file_pattern.replace(self.fold_marker, data_split))
+        assert path.parent.exists()
+        return path
 
-def read_preds(path: str, sep="\t") -> List[Prediction]:
-    qid_to_uids = {}
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            qid, uid = line.split(sep)
-            qid_to_uids.setdefault(qid, []).append(uid)
-    preds = [Prediction(qid=qid, uids=uids) for qid, uids in qid_to_uids.items()]
-    return preds
+    def write(self, preds: List[Prediction], data_split: str):
+        lines = []
+        for p in preds:
+            for u in p.uids:
+                lines.append(self.sep_field.join([p.qid, u]))
+        with open(self.make_path(data_split), "w") as f:
+            f.write(self.sep_line.join(lines))
+
+    def read(self, data_split: str) -> List[Prediction]:
+        qid_to_uids = {}
+        with open(self.make_path(data_split)) as f:
+            for line in f:
+                line = line.strip()
+                qid, uid = line.split(self.sep_field)
+                qid_to_uids.setdefault(qid, []).append(uid)
+        preds = [Prediction(qid=qid, uids=uids) for qid, uids in qid_to_uids.items()]
+        return preds
 
 
 class Scorer(BaseModel):
     @staticmethod
-    def run(path_gold: Path, path_predict: Path):
+    def run(path_gold: Path, path_predict: Path) -> Dict[str, float]:
         gold = evaluate.load_gold(str(path_gold))
         pred = evaluate.load_pred(str(path_predict))
-        # print(len(gold), len(pred))  # 410 496
-
         qid2score = {}
 
         def _callback(qid, score):
             qid2score[qid] = score
 
         mean_ap = evaluate.mean_average_precision_score(gold, pred, callback=_callback)
-        # print("qid2score:", qid2score)
-        print("MAP: ", mean_ap)
-
-        with open("/tmp/scorer/per_q.json", "wt") as f:
+        print(dict(mean_ap=mean_ap))
+        with open("/tmp/per_q.json", "wt") as f:
             json.dump(qid2score, f)
-
         return qid2score
 
 
@@ -310,7 +314,7 @@ def main(
     data = Data(data_split=data_split)
     data.load()
     data.analyze()
-    path_predict = output_pattern.replace("FOLD", data_split)
+    manager = PredictManager(file_pattern=output_pattern)
 
     retrievers = [
         Retriever(),  # Dev MAP=0.3965, recall@512=0.7911
@@ -349,9 +353,9 @@ def main(
     ]
     r = retrievers[-1]
     preds = r.run(data)
-    write_preds(preds, path_predict)
+    manager.write(preds, data_split)
     if data_split != SplitEnum.test:
-        Scorer().run(data.path_gold, Path(path_predict))
+        Scorer().run(data.path_gold, manager.make_path(data_split))
         ResultAnalyzer().run(data, preds)
 
 

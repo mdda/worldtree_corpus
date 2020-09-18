@@ -10,7 +10,6 @@ import torch
 from comet_ml import BaseExperiment
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import CometLogger
 from torch import Tensor, nn
 from torch.optim import Optimizer
@@ -32,16 +31,14 @@ from transformers.modeling_outputs import BaseModelOutput, TokenClassifierOutput
 from baseline_retrieval import (
     Data,
     Retriever,
-    SpacyProcessor,
     Prediction,
     ResultAnalyzer,
     Scorer,
+    PredictManager,
 )
 from dataset import QuestionAnswer, ExplanationUsed
 from extra_data import SplitEnum, analyze_lengths
 from losses import APLoss
-from rankers import StageRanker
-from vectorizers import BM25Vectorizer
 
 
 class NetEnum(str, Enum):
@@ -59,10 +56,11 @@ class Config(BaseModel):
     net_features_type: NetEnum = NetEnum.transformer
 
     net_ranker_type: NetEnum = NetEnum.rnn
-    net_ranker_num_layers: int = 1
+    net_ranker_num_layers: int = 2
     net_ranker_input_size: int = 768
     net_ranker_hidden_size: int = 128
 
+    p_dropout: float = 0.1
     learning_rate: float = 5e-5
     weight_decay: float = 0.0
     adam_beta1: float = 0.9
@@ -73,7 +71,9 @@ class Config(BaseModel):
     overfit_pct: float = 0.0
 
     data_name: str = "textgraphs"
-    loss_name = "map"
+    loss_name: str = "map"
+    input_pattern: str = "../predictions/predict.FOLD.baseline-retrieval.txt"
+    output_pattern: str = "../predictions/predict.FOLD.baseline-rerank.txt"
 
 
 class Example(BaseModel):
@@ -83,7 +83,7 @@ class Example(BaseModel):
 
 
 class RankerNet(nn.Module):
-    def _forward_unimplemented(self, *input: Any) -> None:
+    def _forward_unimplemented(self, *args: Any) -> None:
         pass
 
     def forward(self, x: Tensor) -> Tensor:
@@ -109,6 +109,7 @@ class RnnRankerNet(RankerNet):
             input_size=config.net_ranker_input_size,
             hidden_size=config.net_ranker_hidden_size,
             num_layers=config.net_ranker_num_layers,
+            dropout=config.p_dropout,
             batch_first=True,
             bidirectional=True,
         )
@@ -146,7 +147,7 @@ class TransformerRankerNet(RankerNet):
 
 
 class FeatureNet(nn.Module):
-    def _forward_unimplemented(self, *input: Any) -> None:
+    def _forward_unimplemented(self, *args: Any) -> None:
         pass
 
     def forward(self, x: BatchEncoding) -> Tensor:
@@ -231,13 +232,13 @@ class RerankDataset(Dataset):
     def __init__(
         self,
         data: Data,
-        retriever: Retriever,
+        manager: PredictManager,
         tokenizer: PreTrainedTokenizer,
         top_n: int,
     ):
         self.tokenizer = tokenizer
         self.data = data
-        self.retriever = retriever
+        self.manager = manager
         self.top_n = top_n
         self.uid_to_text = {s.uid: s.raw_txt for s in self.data.statements}
         self.examples = self.load()
@@ -248,7 +249,7 @@ class RerankDataset(Dataset):
 
     @property
     def preds_and_qns(self) -> Tuple[List[Prediction], List[QuestionAnswer]]:
-        preds = self.retriever.run(self.data)
+        preds = self.manager.read(self.data.data_split)
         ResultAnalyzer().run_map_loss(self.data, preds, top_n=self.top_n)
         assert len(preds) == len(self.data.questions)
         indices = []
@@ -332,19 +333,12 @@ class RerankDataset(Dataset):
         print(self.collate_fn([self.examples[0]]))
 
 
-def get_retriever() -> Retriever:
-    return Retriever(
-        preproc=SpacyProcessor(remove_stopwords=True),
-        ranker=StageRanker(num_per_stage=[1, 2, 4, 8, 16], scale=1.25),
-        vectorizer=BM25Vectorizer(binary=True, use_idf=True, k1=2.0, b=0.5),
-    )  # Dev MAP=0.4861, recall@512=0.9345
-
-
 def test_dataset(data_split=SplitEnum.dev, config=Config()):
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     data = Data(data_split=data_split)
     data.load()
-    dataset = RerankDataset(data, get_retriever(), tokenizer, config.top_n)
+    manager = PredictManager(file_pattern=config.input_pattern)
+    dataset = RerankDataset(data, manager, tokenizer, config.top_n)
 
     # Num workers is not too important: default(0) -> 49 it/s, 4 -> 79 it/s but bottleneck is likely model
     loader = DataLoader(
@@ -377,7 +371,7 @@ class RerankRetriever(Retriever):
     Re-run scorer/analyzer
     """
 
-    base_retriever: Retriever = get_retriever()
+    manager: PredictManager
     net: HierarchicalRankerNet
     dataset: RerankDataset
     top_n: int
@@ -400,7 +394,7 @@ class RerankRetriever(Retriever):
         return scores
 
     def run(self, data: Data) -> List[Prediction]:
-        preds = self.base_retriever.run(data)
+        preds = self.manager.read(data.data_split)
         assert len(preds) == len(data.questions)
         scores = torch.zeros(len(preds), self.top_n, device=self.device)
         net = self.net.eval().to(self.device)
@@ -442,7 +436,10 @@ class System(pl.LightningModule):
         data.load()
         mapping = dict(
             textgraphs=RerankDataset(
-                data, get_retriever(), tokenizer, self.config.top_n
+                data,
+                manager=PredictManager(file_pattern=self.config.input_pattern),
+                tokenizer=tokenizer,
+                top_n=self.config.top_n,
             )
         )
         ds = mapping[self.config.data_name]
@@ -474,16 +471,6 @@ class System(pl.LightningModule):
         loss = self.loss_fn(logits, y)
         return dict(val_loss=loss)
 
-    # def run_eval(self, data_split: SplitEnum) -> float:
-    #     ds = {SplitEnum.train: self.ds_train, SplitEnum.dev: self.ds_dev}[data_split]
-    #     retriever = TextPairRetriever(net=self.net, ds=ds)
-    #     data = ds.data
-    #     preds = retriever.run(data)
-    #     qid_to_score = Scorer().run(data.path_gold, preds)
-    #     ResultAnalyzer().run(data, preds)
-    #     scores = list(qid_to_score.values())
-    #     return sum(scores) / len(scores)
-
     def validation_epoch_end(self, outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
         results = {}
         for d in outputs:
@@ -493,6 +480,14 @@ class System(pl.LightningModule):
         # log.update(val_map=self.run_eval(SplitEnum.dev))
         print(log)
         return dict(val_loss=log["val_loss"], log=log)
+
+    def test_step(
+        self, batch: Tuple[BatchEncoding, Tensor], i: int
+    ) -> Dict[str, Tensor]:
+        return self.validation_step(batch, i)
+
+    def test_epoch_end(self, outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return self.validation_epoch_end(outputs)
 
     @property
     def num_train_steps(self) -> int:
@@ -549,55 +544,58 @@ class System(pl.LightningModule):
         return self.make_loader(self.ds_dev, shuffle=False)
 
 
-def get_logger(path_dotenv: str) -> CometLogger:
+def get_logger(save_dir: str, path_dotenv: str) -> CometLogger:
     load_dotenv(path_dotenv)
     assert os.getenv("COMET_KEY") is not None
     return CometLogger(
         api_key=os.getenv("COMET_KEY"),
         workspace=os.getenv("COMET_WORKSPACE"),  # Optional
         project_name=os.getenv("COMET_PROJECT"),  # Optional
-        save_dir="/tmp/comet_logger",
+        save_dir=save_dir,
         # rest_api_key=os.environ["COMET_REST_KEY"], # Optional
-        # experiment_name=input("Enter Experiment Name:"),  # Optional
+        # experiment_name=str(config),  # Optional
     )
 
 
-def run_train(save_dir: str, logger: CometLogger):
+def run_train(logger: CometLogger):
     config = Config()
     system = System(**config.dict())
-    callback = ModelCheckpoint(filepath=save_dir, verbose=True,)
     trainer = pl.Trainer(
-        checkpoint_callback=callback,
         logger=logger,
         max_epochs=config.num_epochs,
         overfit_batches=config.overfit_pct,
         gpus=1,
     )  # precision=16 is not faster on P100
     trainer.fit(system)
-    print(callback.best_model_path, callback.best_model_score)
 
 
 def run_eval(save_dir: str, data_split=SplitEnum.dev):
-    path = list(Path(save_dir).glob("*.ckpt"))[0]
+    path = list(Path(save_dir).glob("**/*.ckpt"))[0]
     print(path)
-    # callback = ModelCheckpoint(filepath=save_dir, verbose=True,)
-    # print(callback.best_model_path, callback.best_model_score)
-
     system = System.load_from_checkpoint(str(path))
     ds = system.make_dataset(data_split)
-    retriever = RerankRetriever(net=system.net, dataset=ds, top_n=system.config.top_n,)
+    manager_in = PredictManager(file_pattern=system.config.input_pattern)
+    manager_out = PredictManager(file_pattern=system.config.output_pattern)
+
+    retriever = RerankRetriever(
+        net=system.net, dataset=ds, top_n=system.config.top_n, manager=manager_in
+    )
+    trainer = pl.Trainer(gpus=1)
+    trainer.test(system, test_dataloaders=system.make_loader(ds, shuffle=False))
 
     data = ds.data
     preds = retriever.run(data)
-    Scorer().run(data.path_gold, preds)
-    ResultAnalyzer().run(data, preds)
+    manager_out.write(preds, data_split)
+    if data_split != SplitEnum.test:
+        Scorer().run(data.path_gold, manager_out.make_path(data_split))
+        ResultAnalyzer().run(data, preds)
 
 
-def main(save_dir="/tmp/checkpoints", path_dotenv="../excluded/.env"):
+def main(save_dir="/tmp/comet_logger", path_dotenv="../excluded/.env"):
     if not Path(save_dir).exists():
-        logger = get_logger(path_dotenv)
-        run_train(save_dir, logger)
-    run_eval("/tmp")
+        logger = get_logger(save_dir, path_dotenv)
+        run_train(logger)
+    run_eval(save_dir)
 
 
 if __name__ == "__main__":
