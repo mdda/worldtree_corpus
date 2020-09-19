@@ -136,7 +136,10 @@ def extract_keywords(spacy_tokens, require_keywords=True) -> Keywords:
         #    print(f"DEBUG:X:{t.text}", spacy_tokens)
         if pos in pos_set: # or t.lemma_=='something':
             found_spans.append([t])
-            
+
+    # units are abbreviations : (and ly = lightyear)
+    # (A) g, kg, cg (B) dL, L, mL (C) ft, yd, mi (D) N, J, W    
+
     if len(spacy_tokens)>0 and len(found_spans)==0 and require_keywords:
         if False:
             s_arr=[]
