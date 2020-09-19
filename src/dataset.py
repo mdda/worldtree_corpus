@@ -692,9 +692,6 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         for e in qa.explanation_gold:
             t=statement_from_uid[e.uid].table
             tables.add(t)
-            #counts=reason_to_table_cnt[e.reason]
-            #if not t in counts: counts[t]=0
-            #counts[t]+=1
             reason_to_table_cnt[e.reason][t]+=1
 
         score = silent_average_precision_score(list(gold), p)
