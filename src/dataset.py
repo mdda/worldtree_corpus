@@ -4,6 +4,8 @@ import warnings
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Tuple, Set
 
+from collections import defaultdict
+
 import re, csv, json
 import numpy as np
 #import pandas as pd
@@ -97,7 +99,7 @@ def fix_keyword_set(kws):
 
     # Read and cache the keyword_relabel.txt file
     if keyword_relabel is None:
-        keyword_relabel=dict()
+        keyword_relabel=defaultdict(set)
         with open(os.path.join(RDAI_BASE, 'keyword_relabel.txt')) as f:
             for l in f.readlines():
                 l=l.strip()
@@ -106,8 +108,8 @@ def fix_keyword_set(kws):
                 kw_from, kw_to = l.split(':')
                 for kw_old in kw_from.split(','):
                     for kw_new in kw_to.split(','):
-                        if not kw_old in keyword_relabel:
-                            keyword_relabel[kw_old]=set()
+                        #if not kw_old in keyword_relabel:
+                        #    keyword_relabel[kw_old]=set()
                         keyword_relabel[kw_old].add(kw_new)
 
     # jq -c .raw_txt,.keywords data/statements.jsonl | grep -A0 -B1 'chemical_bond_energy'
@@ -413,11 +415,11 @@ def print_keyword_counts(keyword_counts:Dict[str,int])->None:
     # jq -c . data/statements.jsonl | grep termite
 
 def get_keyword_counts_from_statements(statements:List[Statement])->Dict[str,int]:
-    keyword_counts = dict()
+    keyword_counts = defaultdict(int)
     for s in statements:
         for k in s.keywords:
-            if not k in keyword_counts:
-                keyword_counts[k]=0
+            #if not k in keyword_counts:
+            #    keyword_counts[k]=0
             keyword_counts[k]+=1
     return keyword_counts
 
@@ -644,11 +646,11 @@ def run_average_precision_sanity_check():
             print(f"{pred:>22s} {score:.4f} {score_silent:.4f}")
 
 def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionAnswer], predictions_file:str):
-    preds=dict() # qa_id -> [statements in order]
+    preds=defaultdict(list) # qa_id -> [statements in order]
     with open(predictions_file, 'rt') as f:
         for l in f.readlines():
             qid, uid = l.strip().split('\t')
-            if qid not in preds: preds[qid]=[]
+            #if qid not in preds: preds[qid]=[]
             preds[qid].append(uid)
 
     # Check with competition scorer results
@@ -674,7 +676,7 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
     reasons='CENTRAL|GROUNDING|LEXGLUE|ROLE|BACKGROUND|NE|NEG'.split('|')
     reason_cnt = { reason:[0,0] for reason in reasons}  # (hit,miss)
 
-    reason_to_table_cnt={ reason:dict() for reason in reasons} # dict()=(table->cnt)
+    reason_to_table_cnt={ reason:defaultdict(int) for reason in reasons} # dict()=(table->cnt)
     tables=set()
 
     # Now got through the questions, and chart out the 'hits', 
@@ -690,9 +692,10 @@ def analyse_outliers(limit:int, statements:List[Statement], qanda:List[QuestionA
         for e in qa.explanation_gold:
             t=statement_from_uid[e.uid].table
             tables.add(t)
-            counts=reason_to_table_cnt[e.reason]
-            if not t in counts: counts[t]=0
-            counts[t]+=1
+            #counts=reason_to_table_cnt[e.reason]
+            #if not t in counts: counts[t]=0
+            #counts[t]+=1
+            reason_to_table_cnt[e.reason][t]+=1
 
         score = silent_average_precision_score(list(gold), p)
         sc_tot+=score
@@ -776,11 +779,11 @@ if '__main__' == __name__:
                 if n_words>2:
                     print(n_words,k,v)
     if False: # Let's look at the words within compound keywords
-        keyword_base=dict()
+        keyword_base=defaultdict(list) # keep a list, so we can measure frequency
         for k,v in keyword_counts.items():
             for kw in k.split('_'):
-                if kw not in keyword_base:
-                    keyword_base[kw]=[]  # keep a list, so we can measure frequency
+                #if kw not in keyword_base:
+                #    keyword_base[kw]=[]  # keep a list, so we can measure frequency
                 keyword_base[kw].append(k)
         for k,kw_list in sorted(keyword_base.items()):
             print(f"{k:<20s}:{len(kw_list):4d}:"+

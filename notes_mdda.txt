@@ -30,10 +30,14 @@ To encourage transparency and replicability, all teams must publish their :
 
 (2020-09-02)
   Username	Score   
-1	alvysinger	0.5815
-2	webbley	    0.5809
-3	aisys	      0.5233
+1	alvysinger  0.5815
+2	webbley     0.5809
+3	aisys       0.5233
 
+(2020-09-19)
+1	webbley     0.5831 (increased)
+2	alvysinger  0.5815 (same)
+3	aisys       0.5233 (same)
 
 ## Installation
 
