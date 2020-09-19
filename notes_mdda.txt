@@ -61,10 +61,11 @@ git config --global credential.helper 'cache --timeout=36000'  # 10hrs
 
 
 
-
 Applying Graph Neural Networks on Heterogeneous Nodes and Edge Features
   https://grlearning.github.io/papers/6.pdf
 
+
+https://twitter.com/PetarV_93/status/1306689702020382720
 
 https://petar-v.com/GAT/
 
