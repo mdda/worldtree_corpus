@@ -29,12 +29,13 @@ To encourage transparency and replicability, all teams must publish their :
 ## Scores
 
 (2020-09-02)
-  Username	Score   
+  Username    Score   
 1	alvysinger  0.5815
 2	webbley     0.5809
 3	aisys       0.5233
 
 (2020-09-19)
+  Username    Score   
 1	webbley     0.5831 (increased)
 2	alvysinger  0.5815 (same)
 3	aisys       0.5233 (same)
@@ -48,9 +49,10 @@ git checkout -b textgraphs_2020 origin/textgraphs_2020
 
 ./run_setup.bash
 ./run_baseline.bash
+
 # train.baseline.txt => 0.2469 MAP locally
 # dev.baseline.txt   => 0.2550 MAP locally
-# test.baseline.txt  => 0.???? MAP (TODO: Test upload)
+# test.baseline.txt  => 0.2347 MAP (Test uploaded on 2020-08-31)
 
 ## ...
 
@@ -101,3 +103,6 @@ pip install torch-geometric
 9b87-dd15-0cc5-32aa : TWICE in OPPOSITES.tsv
 5689-a3ff-212f-560a : TWICE in OPPOSITES.tsv
 b69d-9d08-0ad6-3023 : TWICE in UNIT.tsv
+
+https://www.sbert.net/docs/usage/computing_sentence_embeddings.html
+
