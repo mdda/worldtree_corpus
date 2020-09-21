@@ -1,5 +1,7 @@
 import json
+import pickle
 import sys
+import time
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Tuple
 
@@ -70,8 +72,6 @@ class Data(BaseModel):
 class Prediction(BaseModel):
     qid: str
     uids: List[str]
-    scores: Optional[List[float]]
-    sep: str = "\t"
 
 
 class TextProcessor(BaseModel):
@@ -189,17 +189,36 @@ class PredictManager(BaseModel):
         for p in preds:
             for u in p.uids:
                 lines.append(self.sep_field.join([p.qid, u]))
-        with open(self.make_path(data_split), "w") as f:
+
+        path = self.make_path(data_split)
+        with open(path, "w") as f:
             f.write(self.sep_line.join(lines))
+        with open(path.with_suffix(".pkl"), "wb") as f:
+            pickle.dump(preds, f)
 
     def read(self, data_split: str) -> List[Prediction]:
+        start = time.time()
         qid_to_uids = {}
-        with open(self.make_path(data_split)) as f:
+        path = self.make_path(data_split)
+        with open(path) as f:
             for line in f:
                 line = line.strip()
                 qid, uid = line.split(self.sep_field)
                 qid_to_uids.setdefault(qid, []).append(uid)
         preds = [Prediction(qid=qid, uids=uids) for qid, uids in qid_to_uids.items()]
+        duration = time.time() - start
+        print(dict(read=path, duration=round(duration, 3)))
+        return preds
+
+    def read_pickle(self, data_split: str) -> List[Prediction]:
+        # About 50x faster than reading .txt, with 7x smaller file
+        start = time.time()
+        path = self.make_path(data_split).with_suffix(".pkl")
+        with open(path, "rb") as f:
+            preds = pickle.load(f)
+
+        duration = time.time() - start
+        print(dict(read=path, duration=round(duration, 3)))
         return preds
 
 
