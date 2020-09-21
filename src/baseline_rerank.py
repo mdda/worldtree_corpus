@@ -20,7 +20,6 @@ from transformers import (
     BatchEncoding,
     AutoTokenizer,
     PreTrainedModel,
-    PreTrainedTokenizer,
     AutoModel,
     AutoModelForTokenClassification,
     AdamW,
@@ -38,7 +37,7 @@ from baseline_retrieval import (
 )
 from dataset import QuestionAnswer, ExplanationUsed
 from extra_data import SplitEnum, analyze_lengths
-from losses import APLoss
+from losses import APLoss, TAPLoss
 
 
 class NetEnum(str, Enum):
@@ -50,8 +49,9 @@ class NetEnum(str, Enum):
 class Config(BaseModel):
     bs: int = 1
     top_n: int = 128
-    model_name: str = "distilbert-base-uncased"
+    model_name: str = "ishan/distilbert-base-uncased-mnli"
     num_labels: int = 1
+    num_bonus_contexts: int = 0
 
     net_features_type: NetEnum = NetEnum.transformer
 
@@ -184,14 +184,17 @@ class HierarchicalRankerNet(nn.Module):
 
 
 def make_net(config: Config) -> nn.Module:
-    net_ranker = {
-        NetEnum.rnn: RnnRankerNet(config),
-        NetEnum.transformer: TransformerRankerNet(config),
-        NetEnum.dense: DenseRankerNet(config),
+    class_ranker = {
+        NetEnum.rnn: RnnRankerNet,
+        NetEnum.transformer: TransformerRankerNet,
+        NetEnum.dense: DenseRankerNet,
     }[config.net_ranker_type]
-    net_features = {NetEnum.transformer: TransformerFeatureNet(config)}[
+    net_ranker = class_ranker(config)
+
+    class_features = {NetEnum.transformer: TransformerFeatureNet}[
         config.net_features_type
     ]
+    net_features = class_features(config)
     net = HierarchicalRankerNet(net_features, net_ranker)
     return net
 
@@ -229,27 +232,24 @@ class RerankDataset(Dataset):
         Input (BatchEncoding) shape is (bs, top_n, seq_len)
     """
 
-    def __init__(
-        self,
-        data: Data,
-        manager: PredictManager,
-        tokenizer: PreTrainedTokenizer,
-        top_n: int,
-    ):
-        self.tokenizer = tokenizer
+    def __init__(self, data: Data, config: Config, is_test=False):
+        self.config = config
+        self.tokenizer = AutoTokenizer.from_pretrained(config.model_name)
         self.data = data
-        self.manager = manager
-        self.top_n = top_n
+        self.manager = PredictManager(file_pattern=config.input_pattern)
+        self.top_n = config.top_n
         self.uid_to_text = {s.uid: s.raw_txt for s in self.data.statements}
-        self.examples = self.load()
+        self.examples: List[Example] = [] if is_test else self.load()
 
-    @staticmethod
-    def qn_to_text(q: QuestionAnswer):
-        return q.question.raw_txt + " " + q.answers[0].raw_txt
+    def qn_to_text(self, q: QuestionAnswer, p: Prediction):
+        texts = self.pred_to_texts(p, top_n=self.config.num_bonus_contexts)
+        texts.append(q.question.raw_txt)
+        texts.append(q.answers[0].raw_txt)
+        return " ".join(texts)
 
     @property
     def preds_and_qns(self) -> Tuple[List[Prediction], List[QuestionAnswer]]:
-        preds = self.manager.read(self.data.data_split)
+        preds = self.manager.read_pickle(self.data.data_split)
         ResultAnalyzer().run_map_loss(self.data, preds, top_n=self.top_n)
         assert len(preds) == len(self.data.questions)
         indices = []
@@ -291,7 +291,9 @@ class RerankDataset(Dataset):
             if sum(labels) == 0:
                 print(dict(no_hits_in_top_n=q.question_id))
                 continue
-            examples.append(Example(query=self.qn_to_text(q), docs=docs, labels=labels))
+            examples.append(
+                Example(query=self.qn_to_text(q, p), docs=docs, labels=labels)
+            )
         return examples
 
     def make_tokens(self, texts_a: List[str], texts_b: List[str]) -> BatchEncoding:
@@ -334,11 +336,9 @@ class RerankDataset(Dataset):
 
 
 def test_dataset(data_split=SplitEnum.dev, config=Config()):
-    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     data = Data(data_split=data_split)
     data.load()
-    manager = PredictManager(file_pattern=config.input_pattern)
-    dataset = RerankDataset(data, manager, tokenizer, config.top_n)
+    dataset = RerankDataset(data, config)
 
     # Num workers is not too important: default(0) -> 49 it/s, 4 -> 79 it/s but bottleneck is likely model
     loader = DataLoader(
@@ -380,7 +380,7 @@ class RerankRetriever(Retriever):
     def run_qn(
         self, q: QuestionAnswer, p: Prediction, net: HierarchicalRankerNet
     ) -> Tensor:
-        query = self.dataset.qn_to_text(q)
+        query = self.dataset.qn_to_text(q, p)
         docs = self.dataset.pred_to_texts(p, top_n=self.top_n)
         ex = Example(query=query, docs=docs, labels=[0] * len(docs))
         x: BatchEncoding
@@ -394,7 +394,7 @@ class RerankRetriever(Retriever):
         return scores
 
     def run(self, data: Data) -> List[Prediction]:
-        preds = self.manager.read(data.data_split)
+        preds = self.manager.read_pickle(data.data_split)
         assert len(preds) == len(data.questions)
         scores = torch.zeros(len(preds), self.top_n, device=self.device)
         net = self.net.eval().to(self.device)
@@ -426,20 +426,19 @@ class System(pl.LightningModule):
 
     def make_loss_fn(self) -> nn.Module:
         mapping = dict(
-            mse=nn.MSELoss(), crossentropy=nn.CrossEntropyLoss(), map=APLoss()
+            mse=nn.MSELoss(),
+            crossentropy=nn.CrossEntropyLoss(),
+            map=APLoss(),
+            tap=TAPLoss(),
         )
         return mapping[self.config.loss_name]
 
     def make_dataset(self, data_split: SplitEnum) -> RerankDataset:
-        tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
         data = Data(data_split=data_split)
         data.load()
         mapping = dict(
             textgraphs=RerankDataset(
-                data,
-                manager=PredictManager(file_pattern=self.config.input_pattern),
-                tokenizer=tokenizer,
-                top_n=self.config.top_n,
+                data, self.config, is_test=(data_split == SplitEnum.test)
             )
         )
         ds = mapping[self.config.data_name]
@@ -573,15 +572,17 @@ def run_eval(save_dir: str, data_split=SplitEnum.dev):
     path = list(Path(save_dir).glob("**/*.ckpt"))[0]
     print(path)
     system = System.load_from_checkpoint(str(path))
-    ds = system.make_dataset(data_split)
     manager_in = PredictManager(file_pattern=system.config.input_pattern)
     manager_out = PredictManager(file_pattern=system.config.output_pattern)
 
+    ds = system.make_dataset(data_split)
     retriever = RerankRetriever(
         net=system.net, dataset=ds, top_n=system.config.top_n, manager=manager_in
     )
-    trainer = pl.Trainer(gpus=1)
-    trainer.test(system, test_dataloaders=system.make_loader(ds, shuffle=False))
+
+    if data_split != SplitEnum.test:
+        trainer = pl.Trainer(gpus=1)
+        trainer.test(system, test_dataloaders=system.make_loader(ds, shuffle=False))
 
     data = ds.data
     preds = retriever.run(data)
@@ -595,7 +596,8 @@ def main(save_dir="/tmp/comet_logger", path_dotenv="../excluded/.env"):
     if not Path(save_dir).exists():
         logger = get_logger(save_dir, path_dotenv)
         run_train(logger)
-    run_eval(save_dir)
+    run_eval(save_dir, data_split=SplitEnum.dev)
+    run_eval(save_dir, data_split=SplitEnum.test)
 
 
 if __name__ == "__main__":
