@@ -9,13 +9,15 @@ from torch import Tensor
 from tqdm import tqdm
 
 
-def deduplicate(items: list) -> list:
+def deduplicate(items: list, limit: int = -1) -> list:
     seen = set()
     output = []
     for x in items:
         if x not in seen:
             seen.add(x)
             output.append(x)
+        if 0 < limit <= len(output):
+            break
     return output
 
 
@@ -23,6 +25,23 @@ class Ranker(BaseModel):
     def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
         distances: np.ndarray = cosine_distances(vecs_q, vecs_s)
         ranking: np.ndarray = np.argsort(distances, axis=-1)
+        return ranking
+
+
+class LimitRanker(Ranker):
+    top_n: int
+    bs: int = 1024
+
+    def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
+        num_q = vecs_q.shape[0]
+        ranking = np.zeros(shape=(num_q, self.top_n), dtype=np.int)
+        for i in tqdm(range(0, num_q, self.bs)):
+            q = vecs_q[i : i + self.bs, :]
+            dists: np.ndarray = cosine_distances(q, vecs_s)
+            rank: np.ndarray = np.argsort(dists, axis=-1)
+            rank = rank[:, : self.top_n]
+            ranking[i : i + self.bs, :] = rank
+
         return ranking
 
 

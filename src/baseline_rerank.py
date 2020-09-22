@@ -1,5 +1,7 @@
 import os
+import random
 from collections import Counter
+from copy import deepcopy
 from enum import Enum
 from pathlib import Path
 from typing import List, Tuple, Set, Callable, Any, Dict
@@ -39,6 +41,8 @@ from dataset import QuestionAnswer, ExplanationUsed
 from extra_data import SplitEnum, analyze_lengths
 from losses import APLoss, TAPLoss
 
+pl.seed_everything(42)
+
 
 class NetEnum(str, Enum):
     transformer = "transformer"
@@ -52,6 +56,7 @@ class Config(BaseModel):
     model_name: str = "ishan/distilbert-base-uncased-mnli"
     num_labels: int = 1
     num_bonus_contexts: int = 0
+    add_missing_gold: bool = True
 
     net_features_type: NetEnum = NetEnum.transformer
 
@@ -80,6 +85,7 @@ class Example(BaseModel):
     query: str
     docs: List[str]
     labels: List[int]
+    gold: Set[str]
 
 
 class RankerNet(nn.Module):
@@ -236,6 +242,7 @@ class RerankDataset(Dataset):
         self.config = config
         self.tokenizer = AutoTokenizer.from_pretrained(config.model_name)
         self.data = data
+        self.is_train = self.data.data_split == SplitEnum.train
         self.manager = PredictManager(file_pattern=config.input_pattern)
         self.top_n = config.top_n
         self.uid_to_text = {s.uid: s.raw_txt for s in self.data.statements}
@@ -289,10 +296,16 @@ class RerankDataset(Dataset):
             docs = self.pred_to_texts(p, self.top_n)
             labels = [int(d in docs_gold) for d in docs]
             if sum(labels) == 0:
-                print(dict(no_hits_in_top_n=q.question_id))
-                continue
+                if not (self.is_train and self.config.add_missing_gold):
+                    print(dict(no_hits_in_top_n=q.question_id))
+                    continue
             examples.append(
-                Example(query=self.qn_to_text(q, p), docs=docs, labels=labels)
+                Example(
+                    query=self.qn_to_text(q, p),
+                    docs=docs,
+                    labels=labels,
+                    gold=docs_gold,
+                )
             )
         return examples
 
@@ -305,14 +318,35 @@ class RerankDataset(Dataset):
     def __len__(self) -> int:
         return len(self.examples)
 
+    @staticmethod
+    def insert_gold_missing(e: Example) -> Example:
+        e = deepcopy(e)
+        indices_neg = [i for i, x in enumerate(e.labels) if x == 0]
+        docs = set(e.docs)
+        gold_missing = [text for text in e.gold if text not in docs]
+        assert len(indices_neg) >= len(gold_missing)
+        random.shuffle(indices_neg)
+
+        for i, text in enumerate(gold_missing):
+            j = indices_neg[i]
+            assert e.labels[j] == 0
+            e.docs[j] = text
+            e.labels[j] = 1
+
+        return e
+
     @property
     def collate_fn(self) -> Callable:
         def fn(examples: List[Example]) -> Tuple[BatchEncoding, Tensor]:
             assert len(examples) == 1
-            texts_b = examples[0].docs
-            texts_a = [examples[0].query] * len(texts_b)
+            e = examples[0]
+            if self.is_train and self.config.add_missing_gold:
+                e = self.insert_gold_missing(e)
+
+            texts_b = e.docs
+            texts_a = [e.query] * len(texts_b)
             x = self.make_tokens(texts_a, texts_b)
-            y = Tensor([e.labels for e in examples])
+            y = Tensor([e.labels])
             return x, y
 
         return fn
@@ -382,7 +416,7 @@ class RerankRetriever(Retriever):
     ) -> Tensor:
         query = self.dataset.qn_to_text(q, p)
         docs = self.dataset.pred_to_texts(p, top_n=self.top_n)
-        ex = Example(query=query, docs=docs, labels=[0] * len(docs))
+        ex = Example(query=query, docs=docs, labels=[0] * len(docs), gold=set())
         x: BatchEncoding
         x, y = self.dataset.collate_fn([ex])
         x = x.to(self.device)

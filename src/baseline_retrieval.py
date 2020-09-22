@@ -25,7 +25,7 @@ from dataset import (
     load_qanda,
     load_statements,
 )
-from extra_data import SplitEnum
+from extra_data import SplitEnum, analyze_lengths
 from losses import APLoss
 from rankers import Ranker, StageRanker, IterativeRanker, deduplicate
 from vectorizers import BM25Vectorizer, TruncatedSVDVectorizer
@@ -37,7 +37,7 @@ import evaluate
 class Data(BaseModel):
     root: str = "../data"
     root_gold: str = "../tg2020task"
-    data_split: str = SplitEnum.dev
+    data_split: SplitEnum = SplitEnum.dev
     statements: Optional[List[Statement]]
     questions: Optional[List[QuestionAnswer]]
     uid_to_statements: Optional[Dict[str, List[Statement]]]
@@ -65,7 +65,12 @@ class Data(BaseModel):
             self.uid_to_statements.setdefault(s.uid_base, []).append(s)
 
     def analyze(self):
-        info = dict(statements=len(self.statements), questions=len(self.questions))
+        len_explains = [len(q.explanation_gold) for q in self.questions]
+        info = dict(
+            statements=len(self.statements),
+            questions=len(self.questions),
+            explains=analyze_lengths(len_explains),
+        )
         print(info)
 
 
@@ -83,14 +88,14 @@ class Retriever(BaseModel):
     preproc: TextProcessor = TextProcessor()
     vectorizer: TfidfVectorizer = BM25Vectorizer()
     ranker: Ranker = Ranker()
+    limit: int = -1
 
     class Config:
         arbitrary_types_allowed = True
 
-    @staticmethod
-    def make_pred(i_query: int, rank: List[int], data: Data) -> Prediction:
+    def make_pred(self, i_query: int, rank: List[int], data: Data) -> Prediction:
         uids = [data.statements[i].uid_base for i in rank]
-        uids = deduplicate(uids)
+        uids = deduplicate(uids, limit=self.limit)
         return Prediction(qid=data.questions[i_query].question_id, uids=uids)
 
     def make_query(self, q: QuestionAnswer, data: Data) -> str:
@@ -181,7 +186,7 @@ class PredictManager(BaseModel):
     def make_path(self, data_split: str) -> Path:
         assert self.file_pattern.count(self.fold_marker) == 1
         path = Path(self.file_pattern.replace(self.fold_marker, data_split))
-        assert path.parent.exists()
+        path.parent.mkdir(exist_ok=True)
         return path
 
     def write(self, preds: List[Prediction], data_split: str):
@@ -281,11 +286,13 @@ class ResultAnalyzer(BaseModel):
     def run_map_loss(
         self, data: Data, preds: List[Prediction], top_n: int = None
     ) -> float:
-        qns, preds = self.filter_qns(data, preds)
         if top_n is None:
             top_n = len(preds[0].uids)
-        losses = []
+        else:
+            top_n = min(len(preds[0].uids), top_n)
 
+        qns, preds = self.filter_qns(data, preds)
+        losses = []
         scores = torch.div(1.0, torch.arange(top_n) + 1)  # [1, 0.5, 0.3  ... 0]
         scores = torch.unsqueeze(scores, dim=0)
 

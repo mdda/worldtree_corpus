@@ -1,6 +1,3 @@
-import warnings
-
-import pandas as pd
 import bz2
 import hashlib
 import json
@@ -9,6 +6,7 @@ import pickle
 import random
 import subprocess
 import sys
+import warnings
 from collections import Counter
 from enum import Enum
 from pathlib import Path
@@ -16,6 +14,7 @@ from typing import List, Optional, Callable, Dict, Any, Tuple, Set
 from unittest.mock import patch
 
 import numpy as np
+import pandas as pd
 from pydantic import BaseModel
 from sklearn.model_selection import train_test_split
 from torch import Tensor
@@ -95,7 +94,7 @@ def read_lines(path: Path, limit: int) -> List[str]:
 
 
 def analyze_lengths(lengths: List[int]) -> Dict[str, float]:
-    return dict(mean=np.mean(lengths), min=np.min(lengths), max=np.max(lengths))
+    return dict(mean=np.mean(lengths), min=np.min(lengths), max=np.max(lengths), std=np.std(lengths))
 
 
 def train_dev_test_split(
@@ -319,15 +318,26 @@ class SimpleWikiData(BaseModel):
 
         if not self.examples:
             self.examples = []
-            for path in dir_extract.glob("*/wiki_*"):
+            for path in tqdm(sorted(dir_extract.glob("*/wiki_*"))):
                 with open(str(path)) as f:
                     for line in f:
                         self.examples.append(SimpleWikiExample(**json.loads(line)))
+
+        assert len(set([e.title for e in self.examples])) == len(self.examples)
+        for e in self.examples:
+            assert e.text.startswith(e.title), dict(title=e.title, text=e.text)
+            e.text = e.text[len(e.title) :]
 
     def analyze(self):
         self.load()
         print(type(self).__name__)
         print(dict(length=len(self.examples)))
+
+        random.seed(42)
+        samples = random.sample(self.examples, k=10)
+        for s in samples:
+            record = s.dict()
+            print(json.dumps(record, indent=2))
 
 
 class AristoMiniCorpus(BaseModel):
@@ -573,16 +583,16 @@ def main():
     # data = MultiNLI()
     # data.analyze()
     #
-    # data = SimpleWikiData()
-    # data.analyze()
+    data = SimpleWikiData()
+    data.analyze()
 
     # tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
     # dataset = MSMarcoHierarchicalSentenceDataset(SplitEnum.train, tokenizer)
     # dataset.analyze()
     # dataset.data.analyze()
 
-    data = TextGraphsData()
-    data.analyze()
+    # data = TextGraphsData()
+    # data.analyze()
 
 
 if __name__ == "__main__":
