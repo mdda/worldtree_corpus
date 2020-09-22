@@ -40,6 +40,16 @@ To encourage transparency and replicability, all teams must publish their :
 2	alvysinger  0.5815 (same)
 3	aisys       0.5233 (same)
 
+(2020-09-21)
+#	Username	Score
+1	webbley     0.6033 (increased)
+2	alvysinger  0.5815 (same)
+3	aisys       0.5233 (same)
+
+6	redken	3	09/21/20		0.4793 (5)
+
+
+
 ## Installation
 
 git clone https://github.com/mdda/worldtree_corpus.git
