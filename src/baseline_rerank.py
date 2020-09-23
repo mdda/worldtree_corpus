@@ -69,7 +69,7 @@ class Config(BaseModel):
 
     net_features_type: NetEnum = NetEnum.transformer
 
-    net_ranker_type: NetEnum = NetEnum.gcn
+    net_ranker_type: NetEnum = NetEnum.rnn
     net_ranker_num_layers: int = 2
     net_ranker_input_size: int = 768
     net_ranker_hidden_size: int = 128
@@ -85,7 +85,7 @@ class Config(BaseModel):
     overfit_pct: float = 0.0
 
     data_name: str = "textgraphs"
-    loss_name: str = "map"
+    loss_name: str = "bce"
     input_pattern: str = "../predictions/predict.FOLD.baseline-retrieval.txt"
     output_pattern: str = "../predictions/predict.FOLD.baseline-rerank.txt"
 
@@ -298,7 +298,7 @@ def test_net(
     outputs = net(inputs)
     assert tuple(outputs.shape) == (config.bs, num_seq)
     assert outputs.shape == labels.shape
-    loss_fn = APLoss()
+    loss_fn = System.make_loss_fn(config)
     loss = loss_fn(outputs, labels)
     print(dict(loss=loss))
 
@@ -563,18 +563,20 @@ class System(pl.LightningModule):
         self.hparams = kwargs  # For logging
         self.config = Config(**kwargs)
         self.net = make_net(self.config)
-        self.loss_fn = self.make_loss_fn()
+        self.loss_fn = self.make_loss_fn(self.config)
         self.ds_train = self.make_dataset(SplitEnum.train)
         self.ds_dev = self.make_dataset(SplitEnum.dev)
 
-    def make_loss_fn(self) -> nn.Module:
+    @staticmethod
+    def make_loss_fn(config: Config) -> nn.Module:
         mapping = dict(
+            bce=nn.BCELoss(),
             mse=nn.MSELoss(),
             crossentropy=nn.CrossEntropyLoss(),
             map=APLoss(),
             tap=TAPLoss(),
         )
-        return mapping[self.config.loss_name]
+        return mapping[config.loss_name]
 
     def make_dataset(self, data_split: SplitEnum) -> RerankDataset:
         data = Data(data_split=data_split)
