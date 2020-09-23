@@ -101,13 +101,20 @@ class TruncatedSVDEncoder(Encoder):
     def run(self, texts: List[str]) -> Tensor:
         texts = self.process_texts(texts)
         x = self.vectorizer.transform(texts)
-        print(dict(x=x.shape))
         return torch.from_numpy(x)
 
 
 class DprRetriever(Retriever):
     encoder_q: Encoder
     encoder_d: Optional[Encoder]
+    do_normalize: bool = True
+
+    @staticmethod
+    def normalize(x: Tensor) -> Tensor:
+        assert x.ndim == 2
+        norm = torch.norm(x, p=2, dim=1, keepdim=True)
+        x = torch.div(x, norm)
+        return x
 
     def rank(self, queries: List[str], statements: List[str]) -> np.ndarray:
         if self.encoder_d is None:
@@ -117,6 +124,9 @@ class DprRetriever(Retriever):
         self.encoder_d.fit(queries + statements)
         vecs_q = self.encoder_q.run(queries)
         vecs_d = self.encoder_d.run(statements)
+        if self.do_normalize:
+            vecs_q, vecs_d = self.normalize(vecs_q), self.normalize(vecs_d)
+
         scores = torch.matmul(vecs_q, torch.transpose(vecs_d, 0, 1))
         scores = scores.cpu()
         return np.argsort(scores.numpy() * -1, axis=-1)
@@ -135,14 +145,15 @@ def main(
         DprRetriever(
             encoder_q=Encoder(name="facebook/dpr-question_encoder-single-nq-base"),
             encoder_d=Encoder(name="facebook/dpr-ctx_encoder-single-nq-base"),
+            do_normalize=False,
         ),  # Dev MAP=0.3127
-        DprRetriever(encoder_q=SentenceTransformerEncoder()),  # Dev MAP=0.3190
+        DprRetriever(encoder_q=SentenceTransformerEncoder()),  # Dev MAP=0.3243
         DprRetriever(
             encoder_q=SentenceTransformerEncoder(
                 name="roberta-large-nli-stsb-mean-tokens"
             )
-        ),  # Dev MAP=0.3006
-        DprRetriever(encoder_q=TruncatedSVDEncoder()),  # Dev MAP=0.3487
+        ),  # Dev MAP=0.3150
+        DprRetriever(encoder_q=TruncatedSVDEncoder()),  # Dev MAP=0.3847
     ]
 
     r = retrievers[-1]
