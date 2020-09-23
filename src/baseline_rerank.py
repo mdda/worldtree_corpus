@@ -13,10 +13,15 @@ from comet_ml import BaseExperiment
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from pytorch_lightning.loggers import CometLogger
+from scipy.sparse import csr_matrix, coo_matrix
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from torch import Tensor, nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import Dataset, DataLoader
+from torch_geometric.data import Data as GraphData
+from torch_geometric.nn import GCNConv
 from tqdm import tqdm
 from transformers import (
     BatchEncoding,
@@ -36,10 +41,13 @@ from baseline_retrieval import (
     ResultAnalyzer,
     Scorer,
     PredictManager,
+    SpacyProcessor,
+    TextProcessor,
 )
-from dataset import QuestionAnswer, ExplanationUsed
+from dataset import QuestionAnswer, ExplanationUsed, TxtAndKeywords
 from extra_data import SplitEnum, analyze_lengths
 from losses import APLoss, TAPLoss
+from vectorizers import BM25Vectorizer
 
 pl.seed_everything(42)
 
@@ -48,6 +56,7 @@ class NetEnum(str, Enum):
     transformer = "transformer"
     rnn = "rnn"
     dense = "dense"
+    gcn = "gcn"
 
 
 class Config(BaseModel):
@@ -60,7 +69,7 @@ class Config(BaseModel):
 
     net_features_type: NetEnum = NetEnum.transformer
 
-    net_ranker_type: NetEnum = NetEnum.rnn
+    net_ranker_type: NetEnum = NetEnum.gcn
     net_ranker_num_layers: int = 2
     net_ranker_input_size: int = 768
     net_ranker_hidden_size: int = 128
@@ -88,24 +97,25 @@ class Example(BaseModel):
     gold: Set[str]
 
 
+class NetInputs(BaseModel):
+    class Config:
+        arbitrary_types_allowed = True
+
+    encoding: BatchEncoding
+    graph: GraphData = GraphData()
+
+    def to(self, device: str):
+        self.encoding = self.encoding.to(device)
+        self.graph = self.graph.to(device)
+        return self
+
+
 class RankerNet(nn.Module):
     def _forward_unimplemented(self, *args: Any) -> None:
         pass
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, inputs: NetInputs) -> Tensor:
         raise NotImplementedError
-
-
-class DenseRankerNet(RankerNet):
-    def __init__(self, config: Config):
-        super().__init__()
-        self.linear = nn.Linear(config.net_ranker_input_size, 1)
-
-    def forward(self, x: Tensor) -> Tensor:
-        x = x.unsqueeze(dim=0)
-        x = self.linear(x)
-        x = x.squeeze(dim=-1)
-        return x
 
 
 class RnnRankerNet(RankerNet):
@@ -123,13 +133,72 @@ class RnnRankerNet(RankerNet):
             nn.Linear(config.net_ranker_hidden_size * 2, 1), nn.Sigmoid()
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, inputs: NetInputs) -> Tensor:
+        x = inputs.graph.x
         num, dim = x.shape
         x = x.unsqueeze(dim=0)
         x, states = self.rnn(x)
         x = self.linear(x)
         x = torch.squeeze(x, dim=-1)
         assert tuple(x.shape) == (1, num)
+        return x
+
+
+class GcnBlock(nn.Module):
+    def _forward_unimplemented(self, *input: Any) -> None:
+        pass
+
+    def __init__(self, input_size: int, hidden_size: int, p_dropout: float):
+        super().__init__()
+        self.gcn = GCNConv(input_size, hidden_size, add_self_loops=False)
+        self.final = nn.Sequential(nn.ReLU(), nn.Dropout(p=p_dropout))
+
+    def forward(self, *args) -> Tensor:
+        x = self.gcn(*args)
+        x = self.final(x)
+        return x
+
+
+class GcnRankerNet(RankerNet):
+    def __init__(self, config: Config):
+        super().__init__()
+        input_size = config.net_ranker_input_size
+        hidden_size = config.net_ranker_hidden_size
+        self.config = config
+
+        self.conv1 = GcnBlock(input_size, hidden_size, config.p_dropout)
+        self.conv2 = GcnBlock(hidden_size, hidden_size, config.p_dropout)
+        self.rnn = nn.LSTM(
+            input_size=hidden_size,
+            hidden_size=hidden_size // 2,
+            bidirectional=True,
+            batch_first=True,
+        )
+        self.linear = nn.Sequential(
+            nn.Linear(config.net_ranker_hidden_size, 1), nn.Sigmoid()
+        )
+
+    def forward_rnn(self, x: Tensor) -> Tensor:
+        num, dim = x.shape
+        x = torch.unsqueeze(x, dim=0)
+        x, states = self.rnn(x)
+        x = torch.squeeze(x, dim=0)
+        assert tuple(x.shape) == (num, dim)
+        return x
+
+    def forward(self, inputs: NetInputs):
+        x = inputs.graph.x
+        num, dim = x.shape
+        indices = inputs.graph.edge_index
+        weights = inputs.graph.edge_attr
+
+        x = self.conv1(x, indices, weights)
+        x = self.conv2(x, indices, weights)
+        x = self.forward_rnn(x)
+        x = self.linear(x)
+
+        assert tuple(x.shape) == (num, 1)
+        x = torch.transpose(x, 0, 1)
         return x
 
 
@@ -140,7 +209,8 @@ class TransformerRankerNet(RankerNet):
             config.model_name, num_labels=1
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, inputs: NetInputs) -> Tensor:
+        x = inputs.graph.x
         num_seq, dim = x.shape
         x = torch.unsqueeze(x, dim=0)
         output: TokenClassifierOutput = self.transformer(
@@ -183,9 +253,9 @@ class HierarchicalRankerNet(nn.Module):
         self.net_features = net_features
         self.net_ranker = net_ranker
 
-    def forward(self, x: BatchEncoding) -> Tensor:
-        x = self.net_features(x)
-        x = self.net_ranker(x)
+    def forward(self, inputs: NetInputs) -> Tensor:
+        inputs.graph.x = self.net_features(inputs.encoding)
+        x = self.net_ranker(inputs)
         return x
 
 
@@ -193,7 +263,7 @@ def make_net(config: Config) -> nn.Module:
     class_ranker = {
         NetEnum.rnn: RnnRankerNet,
         NetEnum.transformer: TransformerRankerNet,
-        NetEnum.dense: DenseRankerNet,
+        NetEnum.gcn: GcnRankerNet,
     }[config.net_ranker_type]
     net_ranker = class_ranker(config)
 
@@ -206,7 +276,7 @@ def make_net(config: Config) -> nn.Module:
 
 
 def test_net(
-    inputs: BatchEncoding = None,
+    inputs: NetInputs = None,
     labels: Tensor = None,
     config=Config(),
     num_seq=128,
@@ -214,7 +284,12 @@ def test_net(
 ):
     if inputs is None:
         x = torch.ones(num_seq, seq_len, dtype=torch.long)
-        inputs = BatchEncoding(data=dict(input_ids=x, attention_mask=x))
+        graph_maker = GraphMaker()
+        texts = list("this is dummy text which will be split up by characters")
+        inputs = NetInputs(
+            encoding=BatchEncoding(data=dict(input_ids=x, attention_mask=x)),
+            graph=graph_maker.run(texts),
+        )
 
     if labels is None:
         labels = torch.lt(torch.randn(config.bs, num_seq), 0.05).float()
@@ -226,6 +301,35 @@ def test_net(
     loss_fn = APLoss()
     loss = loss_fn(outputs, labels)
     print(dict(loss=loss))
+
+
+class GraphMaker(BaseModel):
+    vectorizer: TfidfVectorizer = BM25Vectorizer()
+    preproc: TextProcessor = SpacyProcessor(remove_stopwords=True)
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    @staticmethod
+    def csr_to_edges(x: csr_matrix) -> Tuple[Tensor, Tensor]:
+        x_coo: coo_matrix = x.tocoo()
+        rows = torch.from_numpy(x_coo.row).unsqueeze(dim=0)
+        cols = torch.from_numpy(x_coo.col).unsqueeze(dim=0)
+        indices = torch.cat([rows, cols], dim=0)
+        indices = indices.long()
+
+        values = torch.from_numpy(x_coo.data).float()
+        values = values.unsqueeze(dim=-1)
+        num_edges, num_features = values.shape
+        assert tuple(indices.shape) == (2, num_edges)
+        return indices, values
+
+    def run(self, texts: List[str]) -> Data:
+        texts = [self.preproc.run(TxtAndKeywords(raw_txt=t)) for t in texts]
+        vectors = self.vectorizer.fit_transform(texts)
+        scores: csr_matrix = cosine_similarity(vectors, dense_output=False)
+        indices, values = self.csr_to_edges(scores)
+        return GraphData(edge_index=indices, edge_attr=values)
 
 
 class RerankDataset(Dataset):
@@ -247,6 +351,7 @@ class RerankDataset(Dataset):
         self.top_n = config.top_n
         self.uid_to_text = {s.uid: s.raw_txt for s in self.data.statements}
         self.examples: List[Example] = [] if is_test else self.load()
+        self.graph_maker = GraphMaker()
 
     def qn_to_text(self, q: QuestionAnswer, p: Prediction):
         texts = self.pred_to_texts(p, top_n=self.config.num_bonus_contexts)
@@ -337,17 +442,20 @@ class RerankDataset(Dataset):
 
     @property
     def collate_fn(self) -> Callable:
-        def fn(examples: List[Example]) -> Tuple[BatchEncoding, Tensor]:
+        def fn(examples: List[Example]) -> Tuple[NetInputs, Tensor]:
             assert len(examples) == 1
             e = examples[0]
             if self.is_train and self.config.add_missing_gold:
                 e = self.insert_gold_missing(e)
 
-            texts_b = e.docs
-            texts_a = [e.query] * len(texts_b)
-            x = self.make_tokens(texts_a, texts_b)
+            docs = e.docs
+            queries = [e.query] * len(docs)
             y = Tensor([e.labels])
-            return x, y
+            inputs = NetInputs(
+                encoding=self.make_tokens(queries, docs),
+                graph=self.graph_maker.run(docs),
+            )
+            return inputs, y
 
         return fn
 
@@ -387,8 +495,9 @@ def test_dataset(data_split=SplitEnum.dev, config=Config()):
         if i == limit:
             break
 
+    inputs: NetInputs
     inputs, labels = next(iter(loader))
-    num_seq, seq_len = inputs.input_ids.shape
+    num_seq, seq_len = inputs.encoding.input_ids.shape
     assert tuple(labels.shape) == (config.bs, num_seq)
     test_net(inputs=inputs, labels=labels, config=config)
     dataset.analyze()
