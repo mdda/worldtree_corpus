@@ -81,7 +81,7 @@ class SequenceAdapter(nn.Module, ABC):
 
 
 class RnnAdapter(SequenceAdapter, ABC):
-    def __init__(self, hidden_size: int, project_size: int):
+    def __init__(self, hidden_size: int, project_size: int, p_dropout=0.0):
         super().__init__()
         self.down = nn.Linear(hidden_size, project_size)
         self.up = nn.Linear(project_size, hidden_size)
@@ -92,6 +92,7 @@ class RnnAdapter(SequenceAdapter, ABC):
             bidirectional=True,
         )
         self.interpolator = Interpolator()
+        self.dropout = nn.Dropout(p=p_dropout)
 
     def forward_rnn(self, x: Tensor) -> Tensor:
         num, dim = x.shape
@@ -106,6 +107,7 @@ class RnnAdapter(SequenceAdapter, ABC):
         x = F.gelu(self.down(x))
         x = self.forward_rnn(x)
         x = F.gelu(self.up(x))
+        x = self.dropout(x)
         x = self.interpolator(inputs, x)
         return x
 

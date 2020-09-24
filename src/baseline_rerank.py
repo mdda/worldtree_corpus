@@ -254,6 +254,7 @@ class AdaptedTransformerFeatureNet(TransformerFeatureNet):
         adapter = RnnAdapter(
             hidden_size=self.transformer.config.dim,
             project_size=config.net_ranker_hidden_size,
+            p_dropout=config.p_dropout,
         )
         self.transformer = AdaptedTransformer(
             transformer=self.transformer, adapter=adapter
