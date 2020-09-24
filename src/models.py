@@ -47,7 +47,7 @@ class Interpolator(nn.Module, ABC):
     sigmoid(8.0) ~= 0.9996 which "selects" mostly a by default
     """
 
-    def __init__(self, init_value: float = 8.0):
+    def __init__(self, init_value: float = 0.0):
         super().__init__()
         self.weight = nn.Parameter(
             torch.full(size=(1,), fill_value=init_value, dtype=torch.float)
