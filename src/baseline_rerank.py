@@ -46,7 +46,7 @@ from baseline_retrieval import (
 )
 from dataset import QuestionAnswer, ExplanationUsed, TxtAndKeywords
 from extra_data import SplitEnum, analyze_lengths
-from losses import APLoss, TAPLoss
+from losses import APLoss, TAPLoss, LambdaLoss
 from vectorizers import BM25Vectorizer
 
 pl.seed_everything(42)
@@ -570,6 +570,7 @@ class System(pl.LightningModule):
     @staticmethod
     def make_loss_fn(config: Config) -> nn.Module:
         mapping = dict(
+            lambdaloss=LambdaLoss(),
             bce=nn.BCELoss(),
             mse=nn.MSELoss(),
             crossentropy=nn.CrossEntropyLoss(),

@@ -1,8 +1,10 @@
+from abc import ABC
 from typing import Any
 
 import numpy as np
 import torch
-from torch import nn
+from allrank.models.losses import lambdaLoss
+from torch import nn, Tensor
 
 """
 Reference: https://github.com/almazan/deep-image-retrieval/blob/master/dirtorch/loss.py
@@ -84,8 +86,7 @@ class APLoss(nn.Module):
         return {"loss_ap": float(loss)}
 
 
-def test_ap_loss():
-    loss_fn = APLoss()
+def test_loss(loss_fn: nn.Module):
     num_queries, num_facts = 32, 64
     threshold = 0.5
 
@@ -93,7 +94,7 @@ def test_ap_loss():
     y = torch.gt(torch.clone(x), threshold).float()
     print(dict(x=x.dtype, y=y.dtype))
     loss = loss_fn(x, y)
-    print(dict(ap_loss=loss.item()))
+    print(dict(loss=loss.item()))
 
 
 class TAPLoss(APLoss):
@@ -172,8 +173,20 @@ class TAPLoss(APLoss):
         return {"loss_tap" + ("s" if self.simplified else ""): float(loss)}
 
 
+class LambdaLoss(nn.Module, ABC):
+    # Reference: https://github.com/allegro/allRank/blob/master/tests/losses/test_lambdaloss.py
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.kwargs = kwargs
+
+    def forward(self, y_pred: Tensor, y_true: Tensor) -> Tensor:
+        return lambdaLoss(y_pred, y_true, **self.kwargs, reduction="mean")
+
+
 def main():
-    test_ap_loss()
+    test_loss(loss_fn=APLoss())
+    test_loss(loss_fn=TAPLoss())
+    test_loss(loss_fn=LambdaLoss())
 
 
 if __name__ == "__main__":
