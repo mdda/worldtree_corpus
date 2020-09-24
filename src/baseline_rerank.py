@@ -46,7 +46,7 @@ from baseline_retrieval import (
 from dataset import QuestionAnswer, ExplanationUsed, TxtAndKeywords
 from extra_data import SplitEnum, analyze_lengths
 from losses import APLoss, TAPLoss, LambdaLoss
-from models import RnnAdapter, AdaptedTransformer, GcnBlock
+from models import RnnAdapter, AdaptedTransformer, GcnBlock, TransformerAdapter
 from vectorizers import BM25Vectorizer
 
 pl.seed_everything(42)
@@ -69,6 +69,7 @@ class Config(BaseModel):
     add_missing_gold: bool = True
 
     net_features_type: NetEnum = NetEnum.adapted
+    adapter_type: NetEnum = NetEnum.transformer
 
     net_ranker_type: NetEnum = NetEnum.dense
     net_ranker_num_layers: int = 2
@@ -251,7 +252,11 @@ class TransformerFeatureNet(FeatureNet):
 class AdaptedTransformerFeatureNet(TransformerFeatureNet):
     def __init__(self, config: Config):
         super().__init__(config)
-        adapter = RnnAdapter(
+        adapter_class = {
+            NetEnum.rnn: RnnAdapter,
+            NetEnum.transformer: TransformerAdapter,
+        }[config.adapter_type]
+        adapter = adapter_class(
             hidden_size=self.transformer.config.dim,
             project_size=config.net_ranker_hidden_size,
             p_dropout=config.p_dropout,

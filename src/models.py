@@ -1,6 +1,6 @@
 from abc import ABC
 from copy import deepcopy
-from typing import List, Union
+from typing import List, Union, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -120,6 +120,24 @@ class RnnAdapter(SequenceAdapter, ABC):
         return x
 
 
+class Attention(nn.Module, ABC):
+    def __init__(self, embed_dim: int, num_heads: int, dropout: float):
+        super().__init__()
+        self.net = nn.MultiheadAttention(
+            embed_dim=embed_dim, num_heads=num_heads, dropout=dropout
+        )
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, None]:
+        x, weights = self.net(x, x, x)
+        return x, None
+
+
+class TransformerAdapter(RnnAdapter, ABC):
+    def __init__(self, hidden_size: int, project_size: int, p_dropout=0.0):
+        super().__init__(hidden_size, project_size, p_dropout)
+        self.rnn = Attention(embed_dim=project_size, num_heads=4, dropout=0.0)
+
+
 def test_adapter():
     num, length, dim = 32, 100, 768
     hidden_size, project_size = dim, dim // 2
@@ -198,10 +216,12 @@ def test_transformer():
 
     hidden_size = net.config.dim
     project_size = hidden_size // 2
-    adapter = RnnAdapter(hidden_size=hidden_size, project_size=project_size)
-    net_new = AdaptedTransformer(transformer=net, adapter=adapter)
-    outputs_new = net_new(**inputs, return_dict=True)
-    print(dict(outputs_new=print_transformer_outputs(outputs_new)))
+
+    for adapter_class in [RnnAdapter, TransformerAdapter]:
+        adapter = adapter_class(hidden_size=hidden_size, project_size=project_size)
+        net_new = AdaptedTransformer(transformer=net, adapter=adapter)
+        outputs_new = net_new(**inputs, return_dict=True)
+        print(dict(outputs_new=print_transformer_outputs(outputs_new)))
 
 
 def main():
