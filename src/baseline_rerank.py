@@ -4,12 +4,12 @@ from collections import Counter
 from copy import deepcopy
 from enum import Enum
 from pathlib import Path
-from typing import List, Tuple, Set, Callable, Any, Dict
+from typing import List, Tuple, Set, Callable, Any, Dict, Union
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from comet_ml import BaseExperiment
+from comet_ml import BaseExperiment  # noqa
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from pytorch_lightning.loggers import CometLogger
@@ -21,7 +21,6 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import Dataset, DataLoader
 from torch_geometric.data import Data as GraphData
-from torch_geometric.nn import GCNConv
 from tqdm import tqdm
 from transformers import (
     BatchEncoding,
@@ -47,6 +46,7 @@ from baseline_retrieval import (
 from dataset import QuestionAnswer, ExplanationUsed, TxtAndKeywords
 from extra_data import SplitEnum, analyze_lengths
 from losses import APLoss, TAPLoss, LambdaLoss
+from models import RnnAdapter, AdaptedTransformer, GcnBlock
 from vectorizers import BM25Vectorizer
 
 pl.seed_everything(42)
@@ -54,6 +54,7 @@ pl.seed_everything(42)
 
 class NetEnum(str, Enum):
     transformer = "transformer"
+    adapted = "adapted"
     rnn = "rnn"
     dense = "dense"
     gcn = "gcn"
@@ -67,9 +68,9 @@ class Config(BaseModel):
     num_bonus_contexts: int = 0
     add_missing_gold: bool = True
 
-    net_features_type: NetEnum = NetEnum.transformer
+    net_features_type: NetEnum = NetEnum.adapted
 
-    net_ranker_type: NetEnum = NetEnum.rnn
+    net_ranker_type: NetEnum = NetEnum.dense
     net_ranker_num_layers: int = 2
     net_ranker_input_size: int = 768
     net_ranker_hidden_size: int = 128
@@ -118,6 +119,22 @@ class RankerNet(nn.Module):
         raise NotImplementedError
 
 
+class DenseRankerNet(RankerNet):
+    def __init__(self, config: Config):
+        super().__init__()
+        self.linear = nn.Sequential(
+            nn.Linear(config.net_ranker_input_size, 1), nn.Sigmoid()
+        )
+
+    def forward(self, inputs: NetInputs) -> Tensor:
+        x = inputs.graph.x
+        num, dim = x.shape
+        x = self.linear(x)
+        assert tuple(x.shape) == (num, 1)
+        x = torch.transpose(x, 0, 1)
+        return x
+
+
 class RnnRankerNet(RankerNet):
     def __init__(self, config: Config):
         super().__init__()
@@ -141,21 +158,6 @@ class RnnRankerNet(RankerNet):
         x = self.linear(x)
         x = torch.squeeze(x, dim=-1)
         assert tuple(x.shape) == (1, num)
-        return x
-
-
-class GcnBlock(nn.Module):
-    def _forward_unimplemented(self, *input: Any) -> None:
-        pass
-
-    def __init__(self, input_size: int, hidden_size: int, p_dropout: float):
-        super().__init__()
-        self.gcn = GCNConv(input_size, hidden_size, add_self_loops=False)
-        self.final = nn.Sequential(nn.ReLU(), nn.Dropout(p=p_dropout))
-
-    def forward(self, *args) -> Tensor:
-        x = self.gcn(*args)
-        x = self.final(x)
         return x
 
 
@@ -233,7 +235,9 @@ class FeatureNet(nn.Module):
 class TransformerFeatureNet(FeatureNet):
     def __init__(self, config: Config):
         super().__init__()
-        self.transformer: PreTrainedModel = AutoModel.from_pretrained(config.model_name)
+        self.transformer: Union[PreTrainedModel, nn.Module] = AutoModel.from_pretrained(
+            config.model_name
+        )
 
     def forward(self, x: BatchEncoding) -> Tensor:
         num_seq, seq_len = x.input_ids.shape
@@ -242,6 +246,18 @@ class TransformerFeatureNet(FeatureNet):
         x: Tensor = outputs.last_hidden_state[:, 0, :]
         assert tuple(x.shape) == (num_seq, dim)
         return x
+
+
+class AdaptedTransformerFeatureNet(TransformerFeatureNet):
+    def __init__(self, config: Config):
+        super().__init__(config)
+        adapter = RnnAdapter(
+            hidden_size=self.transformer.config.dim,
+            project_size=config.net_ranker_hidden_size,
+        )
+        self.transformer = AdaptedTransformer(
+            transformer=self.transformer, adapter=adapter
+        )
 
 
 class HierarchicalRankerNet(nn.Module):
@@ -264,12 +280,14 @@ def make_net(config: Config) -> nn.Module:
         NetEnum.rnn: RnnRankerNet,
         NetEnum.transformer: TransformerRankerNet,
         NetEnum.gcn: GcnRankerNet,
+        NetEnum.dense: DenseRankerNet,
     }[config.net_ranker_type]
     net_ranker = class_ranker(config)
 
-    class_features = {NetEnum.transformer: TransformerFeatureNet}[
-        config.net_features_type
-    ]
+    class_features = {
+        NetEnum.transformer: TransformerFeatureNet,
+        NetEnum.adapted: AdaptedTransformerFeatureNet,
+    }[config.net_features_type]
     net_features = class_features(config)
     net = HierarchicalRankerNet(net_features, net_ranker)
     return net
@@ -661,7 +679,7 @@ class System(pl.LightningModule):
             },
         ]
         optimizer = AdamW(
-            grouped_params,
+            grouped_params,  # noqa
             lr=self.config.learning_rate,
             betas=(self.config.adam_beta1, self.config.adam_beta2),
             eps=self.config.adam_epsilon,
@@ -738,7 +756,7 @@ def run_eval(save_dir: str, data_split=SplitEnum.dev):
         ResultAnalyzer().run(data, preds)
 
 
-def main(save_dir="/tmp/comet_logger", path_dotenv="../excluded/.env"):
+def main(save_dir="comet_logger", path_dotenv="../excluded/.env"):
     if not Path(save_dir).exists():
         logger = get_logger(save_dir, path_dotenv)
         run_train(logger)
