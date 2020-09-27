@@ -35,7 +35,7 @@ class LimitRanker(Ranker):
     def run(self, vecs_q: csr_matrix, vecs_s: csr_matrix) -> np.ndarray:
         num_q = vecs_q.shape[0]
         ranking = np.zeros(shape=(num_q, self.top_n), dtype=np.int)
-        for i in tqdm(range(0, num_q, self.bs)):
+        for i in tqdm(range(0, num_q, self.bs), desc="LimitRanker"):
             q = vecs_q[i : i + self.bs, :]
             dists: np.ndarray = cosine_distances(q, vecs_s)
             rank: np.ndarray = np.argsort(dists, axis=-1)

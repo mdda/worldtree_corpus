@@ -69,7 +69,7 @@ class Config(BaseModel):
     add_missing_gold: bool = True
 
     net_features_type: NetEnum = NetEnum.adapted
-    adapter_type: NetEnum = NetEnum.transformer
+    adapter_type: NetEnum = NetEnum.rnn
 
     net_ranker_type: NetEnum = NetEnum.dense
     net_ranker_num_layers: int = 2
@@ -281,7 +281,7 @@ class HierarchicalRankerNet(nn.Module):
         return x
 
 
-def make_net(config: Config) -> nn.Module:
+def make_net(config: Config) -> HierarchicalRankerNet:
     class_ranker = {
         NetEnum.rnn: RnnRankerNet,
         NetEnum.transformer: TransformerRankerNet,
@@ -348,7 +348,7 @@ class GraphMaker(BaseModel):
         assert tuple(indices.shape) == (2, num_edges)
         return indices, values
 
-    def run(self, texts: List[str]) -> Data:
+    def run(self, texts: List[str]) -> GraphData:
         texts = [self.preproc.run(TxtAndKeywords(raw_txt=t)) for t in texts]
         vectors = self.vectorizer.fit_transform(texts)
         scores: csr_matrix = cosine_similarity(vectors, dense_output=False)
@@ -420,14 +420,17 @@ class RerankDataset(Dataset):
     def load(self) -> List[Example]:
         preds, qns = self.preds_and_qns
         examples = []
+        qns_no_hits = []
+
         for p, q in zip(preds, qns):
             docs_gold = set(self.qn_to_explains(q))
             docs = self.pred_to_texts(p, self.top_n)
             labels = [int(d in docs_gold) for d in docs]
             if sum(labels) == 0:
                 if not (self.is_train and self.config.add_missing_gold):
-                    print(dict(no_hits_in_top_n=q.question_id))
+                    qns_no_hits.append(q.question_id)
                     continue
+
             examples.append(
                 Example(
                     query=self.qn_to_text(q, p),
@@ -436,6 +439,7 @@ class RerankDataset(Dataset):
                     gold=docs_gold,
                 )
             )
+        print(dict(qns_no_hits=(len(qns_no_hits), qns_no_hits)))
         return examples
 
     def make_tokens(self, texts_a: List[str], texts_b: List[str]) -> BatchEncoding:
@@ -582,10 +586,10 @@ class System(pl.LightningModule):
     def _forward_unimplemented(self, *args: Any) -> None:
         pass
 
-    def __init__(self, **kwargs):
+    def __init__(self, hparams: dict):
         super().__init__()
-        self.hparams = kwargs  # For logging
-        self.config = Config(**kwargs)
+        self.hparams = hparams  # https://pytorch-lightning.readthedocs.io/en/latest/hyperparameters.html
+        self.config = Config(**hparams)
         self.net = make_net(self.config)
         self.loss_fn = self.make_loss_fn(self.config)
         self.ds_train = self.make_dataset(SplitEnum.train)
@@ -726,9 +730,11 @@ def get_logger(save_dir: str, path_dotenv: str) -> CometLogger:
     )
 
 
-def run_train(logger: CometLogger):
+def run_train(logger: CometLogger, state: Dict[str, Tensor] = None):
     config = Config()
-    system = System(**config.dict())
+    system = System(config.dict())
+    if state is not None:
+        system.load_state_dict(state)
     trainer = pl.Trainer(
         logger=logger,
         max_epochs=config.num_epochs,
@@ -738,10 +744,11 @@ def run_train(logger: CometLogger):
     trainer.fit(system)
 
 
-def run_eval(save_dir: str, data_split=SplitEnum.dev):
-    path = list(Path(save_dir).glob("**/*.ckpt"))[0]
-    print(path)
-    system = System.load_from_checkpoint(str(path))
+def run_eval(save_dir: str = None, system: System = None, data_split=SplitEnum.dev):
+    if system is None:
+        path = list(Path(save_dir).glob("**/*.ckpt"))[0]
+        print(path)
+        system = System.load_from_checkpoint(str(path))
     manager_in = PredictManager(file_pattern=system.config.input_pattern)
     manager_out = PredictManager(file_pattern=system.config.output_pattern)
 
