@@ -3,30 +3,27 @@ import pickle
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Tuple
+from typing import List, Optional, Dict, Tuple
 
 import numpy as np
 import pandas as pd
-import spacy
 import torch
 from fire import Fire
 from pydantic import BaseModel
 from sklearn.feature_extraction.text import TfidfVectorizer
-from spacy.lang.en import English
-from spacy.tokens import Token
 from torch import nn
-from torchvision.datasets.utils import download_and_extract_archive
 from tqdm import tqdm
 
-from dataset import (
-    Statement,
-    QuestionAnswer,
-    TxtAndKeywords,
-    load_qanda,
-    load_statements,
-)
+from dataset import Statement, QuestionAnswer, load_qanda, load_statements
 from extra_data import SplitEnum, analyze_lengths
 from losses import APLoss
+from preprocessors import (
+    TextProcessor,
+    SpacyProcessor,
+    SentenceSplitProcessor,
+    KeywordProcessor,
+    OnlyGoldWordsProcessor,
+)
 from rankers import Ranker, StageRanker, IterativeRanker, deduplicate
 from vectorizers import BM25Vectorizer, TruncatedSVDVectorizer
 
@@ -65,23 +62,33 @@ class Data(BaseModel):
             self.uid_to_statements.setdefault(s.uid_base, []).append(s)
 
     def analyze(self):
-        len_explains = [len(q.explanation_gold) for q in self.questions]
+        num_explains = [len(q.explanation_gold) for q in self.questions]
         info = dict(
             statements=len(self.statements),
             questions=len(self.questions),
-            explains=analyze_lengths(len_explains),
+            num_explains=analyze_lengths(num_explains),
         )
+        if self.data_split != SplitEnum.test:
+            len_explains: List[int] = []
+            for q in self.questions:
+                for e in q.explanation_gold:
+                    statements = self.uid_to_statements.get(e.uid)
+                    if statements is None:
+                        print(dict(missing_uid=e.uid))
+                    else:
+                        state = self.uid_to_statements[e.uid][0]
+                        len_explains.append(len(state.raw_txt))
+            len_qns = [len(q.question.raw_txt) for q in self.questions]
+            info.update(
+                len_explains=analyze_lengths(len_explains),
+                len_qns=analyze_lengths(len_qns),
+            )
         print(info)
 
 
 class Prediction(BaseModel):
     qid: str
     uids: List[str]
-
-
-class TextProcessor(BaseModel):
-    def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
-        return x.raw_txt
 
 
 class Retriever(BaseModel):
@@ -113,68 +120,9 @@ class Retriever(BaseModel):
         queries: List[str] = [self.make_query(q, data) for q in data.questions]
         ranking = self.rank(queries, statements)
         preds: List[Prediction] = []
-        for i in tqdm(range(len(ranking))):
+        for i in tqdm(range(len(ranking)), desc="Retriever"):
             preds.append(self.make_pred(i, list(ranking[i]), data))
         return preds
-
-
-class TextGraphsLemmatizer(TextProcessor):
-    root: str = "/tmp/TextGraphLemmatizer"
-    url: str = "https://github.com/chiayewken/sutd-materials/releases/download/v0.1.0/worldtree_textgraphs_2019_010920.zip"
-    sep: str = "\t"
-    word_to_lemma: Optional[Dict[str, str]]
-
-    def read_csv(
-        self, path: Path, header: str = None, names: List[str] = None
-    ) -> pd.DataFrame:
-        return pd.read_csv(path, header=header, names=names, sep=self.sep)
-
-    @staticmethod
-    def preprocess(word: str) -> str:
-        # Remove punct eg dry-clean -> dryclean so
-        # they won't get split by downstream tokenizers
-        word = word.lower()
-        word = "".join([c for c in word if c.isalpha()])
-        return word
-
-    def load(self):
-        if not self.word_to_lemma:
-            download_and_extract_archive(self.url, self.root, self.root)
-            path = list(Path(self.root).glob("**/annotation"))[0]
-            df = self.read_csv(path / "lemmatization-en.txt", names=["lemma", "word"])
-            self.word_to_lemma = {}
-            for word, lemma in df.values:
-                self.word_to_lemma[self.preprocess(word)] = self.preprocess(lemma)
-
-    def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
-        self.load()
-        text = x.raw_txt
-        return " ".join(self.word_to_lemma.get(w, w) for w in text.split())
-
-
-class SpacyProcessor(TextProcessor):
-    nlp: English = spacy.load("en_core_web_sm", disable=["tagger", "ner", "parser"])
-    remove_stopwords: bool = False
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
-        doc = self.nlp(x.raw_txt)
-        tokens: List[Token] = [tok for tok in doc]
-        if self.remove_stopwords:
-            # Only 1 case where all tokens are stops: "three is more than two"
-            tokens = [tok for tok in tokens if not tok.is_stop]
-            if not tokens:
-                print("SpacyProcessor: No non-stopwords:", doc)
-                return "nothing"
-        words = [tok.lemma_ for tok in tokens]
-        return " ".join(words)
-
-
-class KeywordProcessor(TextProcessor):
-    def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
-        return " ".join(x.keywords)
 
 
 class PredictManager(BaseModel):
@@ -230,14 +178,15 @@ class PredictManager(BaseModel):
 class Scorer(BaseModel):
     @staticmethod
     def run(path_gold: Path, path_predict: Path) -> Dict[str, float]:
-        gold = evaluate.load_gold(str(path_gold))
-        pred = evaluate.load_pred(str(path_predict))
+        gold = evaluate.load_gold(str(path_gold))  # noqa
+        pred = evaluate.load_pred(str(path_predict))  # noqa
         qid2score = {}
 
         def _callback(qid, score):
             qid2score[qid] = score
 
-        mean_ap = evaluate.mean_average_precision_score(gold, pred, callback=_callback)
+        score_fn = evaluate.mean_average_precision_score  # noqa
+        mean_ap = score_fn(gold, pred, callback=_callback)
         print(dict(mean_ap=mean_ap))
         with open("/tmp/per_q.json", "wt") as f:
             json.dump(qid2score, f)
@@ -348,6 +297,9 @@ def main(
         Retriever(
             preproc=SpacyProcessor(remove_stopwords=True)
         ),  # Dev MAP=0.4615, recall@512=0.8780
+        Retriever(  # This shows that only the last 4 sentences are necessary...
+            preproc=SentenceSplitProcessor(max_sentences=4),
+        ),  # Dev MAP=0.4615, recall@512=0.8795
         Retriever(preproc=KeywordProcessor()),  # Dev MAP=0.4529, recall@512=0.8755
         Retriever(
             preproc=KeywordProcessor(), ranker=StageRanker()
@@ -371,6 +323,13 @@ def main(
         #     ranker=WordEmbedRanker(),
         # ),  # Dev MAP=0.01436, recall@512=0.4786
         # From hyperopt_retrieval.py
+        Retriever(  # This shows that keyword generation models have potential
+            preproc=OnlyGoldWordsProcessor(
+                questions=data.questions,
+                statements=data.statements,
+                add_all_gold_words=True,
+            ),
+        ),  # Dev MAP=0.8118, recall@512=1.000
         Retriever(
             preproc=SpacyProcessor(remove_stopwords=True),
             ranker=StageRanker(num_per_stage=[1, 2, 4, 8, 16], scale=1.25),

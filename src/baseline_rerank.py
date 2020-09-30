@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Tuple, Set, Callable, Any, Dict, Union
 
 import numpy as np
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 from comet_ml import BaseExperiment  # noqa
@@ -300,12 +301,9 @@ def make_net(config: Config) -> HierarchicalRankerNet:
 
 
 def test_net(
-    inputs: NetInputs = None,
-    labels: Tensor = None,
-    config=Config(),
-    num_seq=128,
-    seq_len=40,
+    inputs: NetInputs = None, labels: Tensor = None, config=Config(), seq_len=40,
 ):
+    num_seq = config.top_n
     if inputs is None:
         x = torch.ones(num_seq, seq_len, dtype=torch.long)
         graph_maker = GraphMaker()
@@ -504,6 +502,16 @@ class RerankDataset(Dataset):
         print(self.examples[0])
         print(self.collate_fn([self.examples[0]]))
 
+        limit = 10
+        samples = random.sample(self.examples, k=limit)
+        for s in samples:
+            print(dict(query=s.query))
+            data = []
+            assert len(s.docs) == len(s.labels)
+            for doc, label in zip(s.docs, s.labels):
+                data.append(dict(doc=doc, label=label))
+            print(pd.DataFrame(data).head(limit))
+
 
 def test_dataset(data_split=SplitEnum.dev, config=Config()):
     data = Data(data_split=data_split)
@@ -588,7 +596,7 @@ class System(pl.LightningModule):
 
     def __init__(self, hparams: dict):
         super().__init__()
-        self.hparams = hparams  # https://pytorch-lightning.readthedocs.io/en/latest/hyperparameters.html
+        self.hparams = hparams
         self.config = Config(**hparams)
         self.net = make_net(self.config)
         self.loss_fn = self.make_loss_fn(self.config)
@@ -730,8 +738,11 @@ def get_logger(save_dir: str, path_dotenv: str) -> CometLogger:
     )
 
 
-def run_train(logger: CometLogger, state: Dict[str, Tensor] = None):
-    config = Config()
+def run_train(
+    logger: CometLogger, state: Dict[str, Tensor] = None, config: Config = None
+):
+    if config is None:
+        config = Config()
     system = System(config.dict())
     if state is not None:
         system.load_state_dict(state)

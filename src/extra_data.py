@@ -94,7 +94,12 @@ def read_lines(path: Path, limit: int) -> List[str]:
 
 
 def analyze_lengths(lengths: List[int]) -> Dict[str, float]:
-    return dict(mean=np.mean(lengths), min=np.min(lengths), max=np.max(lengths), std=np.std(lengths))
+    return dict(
+        mean=np.mean(lengths),
+        min=np.min(lengths),
+        max=np.max(lengths),
+        std=np.std(lengths),
+    )
 
 
 def train_dev_test_split(
@@ -466,21 +471,22 @@ class SciTailData(BaseModel):
 
     def analyze(self):
         self.load()
-        print(dict(labels=Counter([e.gold_label for e in self.examples])))
-        random.seed(42)
+        info = dict(
+            data_split=self.data_split,
+            labels=Counter([e.gold_label for e in self.examples]),
+            unique_qns=len(set([e.question for e in self.examples])),
+        )
+        print(json.dumps(info, indent=2))
+
         for e in random.sample(self.examples, k=3):
-            print(
-                json.dumps(
-                    dict(
-                        question=e.question,
-                        answer=e.answer,
-                        evidence=e.evidence,
-                        entail=e.has_entail,
-                        statement=e.statement,
-                    ),
-                    indent=2,
-                )
+            info = dict(
+                question=e.question,
+                answer=e.answer,
+                evidence=e.evidence,
+                entail=e.has_entail,
+                statement=e.statement,
             )
+            print(json.dumps(info, indent=2))
         print()
 
 
@@ -501,6 +507,30 @@ class TextGraphsQuestion(BaseModel):
     question: str
     flags: str
     arcset: str
+
+    @property
+    def q_parts(self) -> List[str]:
+        sep = "("
+        return self.question.split(sep)
+
+    @property
+    def q_only(self) -> str:
+        return self.q_parts[0].strip()
+
+    @property
+    def answer_dict(self) -> Dict[str, str]:
+        parts = self.q_parts[1:]
+        mapping = {}
+        sep = ")"
+        for p in parts:
+            key, text = p.split(sep)
+            mapping[key] = text.strip()
+        assert self.AnswerKey in mapping.keys()
+        return mapping
+
+    @property
+    def answer_only(self) -> str:
+        return self.answer_dict[self.AnswerKey]
 
 
 class TextGraphsExplanation(BaseModel):
@@ -551,6 +581,7 @@ class TextGraphsData(BaseModel):
         path_questions = Path(self.root) / f"questions.{self.data_split}.tsv"
         df = pd.read_csv(path_questions, sep="\t")
         self.questions = [TextGraphsQuestion(**r) for r in df.to_dict(orient="records")]
+        assert all([q.answer_only for q in self.questions])
 
         self.explanations = []
         for p in (Path(self.root) / "tables").iterdir():
@@ -570,29 +601,49 @@ class TextGraphsData(BaseModel):
         )
         print(info)
 
+        limit = 5
+        texts = [q.q_only for q in self.questions]
+        for t in sorted(texts, key=lambda x: len(x), reverse=True)[:limit]:
+            print(dict(long_qn=dict(text=t, words=len(t.split()), chars=len(t))))
+
+        for q in random.sample(self.questions, k=5):
+            info = dict(
+                full=q.question,
+                q_only=q.q_only,
+                answer_dict=q.answer_dict,
+                answer=q.answer_only,
+                explains=q.explanation,
+            )
+            print(json.dumps(info, indent=2))
+
 
 def main():
-    # for s in [SplitEnum.train, SplitEnum.dev, SplitEnum.test]:
-    #     data = SciTailData(data_split=s)
-    #     data.load()
-    #     data.analyze()
-    #
+    data_tg = TextGraphsData(data_split=SplitEnum.train)
+    data_tg.analyze()
+    print("#" * 80)
+    qns_tg = set([q.q_only for q in data_tg.questions])
+
+    for s in [SplitEnum.train, SplitEnum.dev, SplitEnum.test]:
+        data = SciTailData(data_split=s)
+        data.load()
+        data.analyze()
+        qns_scitail = [e.question for e in data.examples]
+        print(dict(tg_overlap=len(qns_tg.intersection(qns_scitail))))
+        print("#" * 80)
+
     # corpus = AristoMiniCorpus()
     # corpus.analyze()
     #
     # data = MultiNLI()
     # data.analyze()
     #
-    data = SimpleWikiData()
-    data.analyze()
+    # data = SimpleWikiData()
+    # data.analyze()
 
     # tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
     # dataset = MSMarcoHierarchicalSentenceDataset(SplitEnum.train, tokenizer)
     # dataset.analyze()
     # dataset.data.analyze()
-
-    # data = TextGraphsData()
-    # data.analyze()
 
 
 if __name__ == "__main__":
