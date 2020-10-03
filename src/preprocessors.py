@@ -9,6 +9,7 @@ from spacy.tokens import Token, Span, Doc
 from torchvision.datasets.utils import download_and_extract_archive
 
 from dataset import Statement, TxtAndKeywords, QuestionAnswer
+from rankers import deduplicate
 
 
 class TextProcessor(BaseModel):
@@ -44,13 +45,13 @@ class OnlyGoldWordsProcessor(TextProcessor):
     base_processor: SpacyProcessor = SpacyProcessor(remove_stopwords=True)
     questions: List[QuestionAnswer]
     statements: List[Statement]
-    qn_to_explains: Optional[Dict[str, str]]
-    answer_set: Optional[Set[str]]
+    qn_to_explains: Dict[str, str] = {}
+    qn_to_answer: Dict[str, str] = {}
+    add_query_words: bool = True
     add_all_gold_words: bool = False
 
     def load(self):
-        if self.qn_to_explains is None:
-            self.qn_to_explains = {}
+        if not self.qn_to_explains:
             uid_to_text = {s.uid: s.raw_txt for s in self.statements}
             for q in self.questions:
                 explains = []
@@ -60,31 +61,47 @@ class OnlyGoldWordsProcessor(TextProcessor):
                         explains.append(text)
                     else:
                         print(dict(missing_uid=e.uid))
-                assert explains
+                if not explains:
+                    print(dict(qn_no_explains=q.question_id))
                 self.qn_to_explains[q.question.raw_txt] = " ".join(explains)
 
-        if self.answer_set is None:
-            self.answer_set = set([q.answers[0].raw_txt for q in self.questions])
+        if not self.qn_to_answer:
+            for q in self.questions:
+                self.qn_to_answer[q.question.raw_txt] = q.answers[0].raw_txt
+
+    @staticmethod
+    def process_words(words: List[str]) -> List[str]:
+        words = [w for w in words if w.isalnum()]
+        words = [w.lower() for w in words]
+        words = sorted(set(words))
+        return words
 
     def run(self, x: Union[TxtAndKeywords, Statement]) -> str:
         self.load()
 
         if isinstance(x, Statement):
             return self.base_processor.run(x)
-        elif x.raw_txt in self.answer_set:
+        elif x.raw_txt in self.qn_to_answer.values():
             return self.base_processor.run(x)
         else:
             explains: str = self.qn_to_explains[x.raw_txt]
             gold = TxtAndKeywords(raw_txt=explains)
-            keywords_gold = set(
-                [word for word in self.base_processor.run(gold).split()]
-            )
-            if self.add_all_gold_words:
-                keywords = sorted(keywords_gold)
+            text = " ".join([x.raw_txt, self.qn_to_answer[x.raw_txt]])
+            x = TxtAndKeywords(raw_txt=text)
+            words = self.process_words(self.base_processor.run(x).split())
+            words_gold = self.process_words(self.base_processor.run(gold).split())
+
+            if self.add_query_words and self.add_all_gold_words:
+                words = words + words_gold
+            elif self.add_query_words:
+                words = sorted(set(words_gold).intersection(words))
+            elif self.add_all_gold_words:
+                words = sorted(set(words_gold).difference(words))
             else:
-                keywords = [word for word in self.base_processor.run(x).split()]
-                keywords = [word for word in keywords if word in keywords_gold]
-            return " ".join(keywords)
+                raise ValueError
+
+            words = deduplicate(words)
+            return " ".join(words)
 
 
 class SentenceSplitProcessor(TextProcessor):

@@ -95,9 +95,9 @@ class WikiData(Data):
     data_wiki: SimpleWikiData = SimpleWikiData()
     data_base: Data = Data()
     vectorizer: TfidfVectorizer = TfidfVectorizer(stop_words="english")
-    max_qns: int = 8000
+    max_qns: int = 32000
     max_docs_per_qn: int = 32
-    max_words_per_doc: int = 32
+    max_chars_per_doc: int = 128
     splitter: SentenceSplitter = SentenceSplitter()
 
     class Config:
@@ -106,7 +106,7 @@ class WikiData(Data):
     def truncate_sents(self, sents: List[Sentences]) -> List[Sentences]:
         sents = deepcopy(sents)
         for s in sents:
-            texts = [" ".join(t.split()[: self.max_words_per_doc]) for t in s.texts]
+            texts = [t[: self.max_chars_per_doc] for t in s.texts]
             assert len(texts) == len(s.texts)
             s.texts = texts
         return sents
@@ -196,15 +196,16 @@ class WikiSystem(System):
                 ResultAnalyzer().run(data, preds)
 
     def make_dataset(self, data_split: SplitEnum) -> RerankDataset:
-        path_cache = Path(f"/tmp/wiki_system/{data_split}.pkl")
+        data = WikiData(data_split=data_split)
+        path_cache = Path(f"/tmp/wiki_system/{hash_text(str(data))}.pkl")
         if not path_cache.parent.exists():
             path_cache.parent.mkdir(exist_ok=True)
+
         saver = PickleSaver(path=path_cache)
         if saver.path.exists():
             data = saver.load()
             print(dict(path_cache=path_cache))
         else:
-            data = WikiData(data_split=data_split)
             data.load()
             saver.dump(data)
 
@@ -225,11 +226,14 @@ def run_train_base(system: WikiSystem, logger: CometLogger):
 
 def main_base(save_dir: str, path_dotenv: str):
     config = Config(
+        num_epochs=1,
         input_pattern="/tmp/wiki_system/predict.FOLD.baseline-retrieval.txt",
         output_pattern="/tmp/wiki_system/predict.FOLD.baseline-rerank.txt",
     )
     if not Path(save_dir).exists():
         system = WikiSystem(config.dict())
+        system.ds_train.analyze()
+
         logger = get_logger(save_dir, path_dotenv)
         run_train_base(system, logger)
 
@@ -246,7 +250,8 @@ def main(
 
     if not Path(save_dir).exists():
         logger = get_logger(save_dir, path_dotenv)
-        run_train(logger, state=system_base.state_dict())
+        config = Config(learning_rate=5e-5, num_epochs=2)
+        run_train(logger, state=system_base.state_dict(), config=config)
 
     run_eval(save_dir, data_split=SplitEnum.dev)
     run_eval(save_dir, data_split=SplitEnum.test)
