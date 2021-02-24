@@ -1,7 +1,12 @@
 # worldtree_corpus
 Worldtree Corpus helper files, and sample solutions
 
-Note: To view our submission code for the EMNLP TextGraphs 2019 Workshop, please refer to the textgraphs [branch](https://github.com/mdda/worldtree_corpus/tree/textgraphs)
+Note: To view submission code for :
+
+*  the EMNLP TextGraphs 2019 Workshop, please refer to the [textgraphs branch](https://github.com/mdda/worldtree_corpus/tree/textgraphs)
+*  the COLING TextGraphs 2020 Workshop, please refer to the [textgraphs_2020 branch](https://github.com/mdda/worldtree_corpus/tree/textgraphs_2020)
+
+# Base code
 
 The idea is to let you :
 
