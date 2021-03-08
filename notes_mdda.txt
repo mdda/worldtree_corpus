@@ -50,6 +50,10 @@ To encourage transparency and replicability, all teams must publish their :
 
 
 
+https://aideadlin.es/?sub=NLP
+
+
+
 ## Installation
 
 git clone https://github.com/mdda/worldtree_corpus.git
