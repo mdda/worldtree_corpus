@@ -1,0 +1,36 @@
+# virtualenv --system-site-packages -p python3 env38
+# . env38/bin/activate
+# pip install -r requirements.txt
+
+PyYAML
+#allRank
+#cloud-tpu-client==0.10
+#comet-ml
+#matchzoo-py
+#nltk
+#paddlepaddle-gpu==1.8.5.post107
+#pandas
+#pgl==1.2.0
+#pydantic==1.6.1
+#python-dotenv==0.14.0
+pytorch-lightning #==0.9.0
+#rouge-score==0.0.4
+#sacrebleu==1.4.14
+#scikit-learn==0.22.2.post1
+sentence-transformers==0.3.6
+#seqeval==0.0.12
+spacy==2.3.2
+#torch-cluster==1.5.7
+#torch-geometric==1.6.1
+#torch-scatter==2.0.5
+#torch-sparse==0.6.7
+#torch-spline-conv==1.2.0
+torch #==1.6.0
+#torchvision==0.7.0
+tqdm
+transformers #==3.1.0
+#virtualenv==20.0.31
+#wikiextractor==0.1
+#xmltodict==0.12.0
+
+nbstripout
