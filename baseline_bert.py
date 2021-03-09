@@ -15,7 +15,7 @@ from dataset import QuestionRatings
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased')
+model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=1)
 tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
 
 model.to(device)
@@ -35,8 +35,9 @@ for epoch in range(5):
         input_ids = batch['input_ids'].to(device)
         attention_mask = batch['attention_mask'].to(device)
         labels = batch['labels'].to(device)
-        outputs = model(input_ids, attention_mask=attention_mask)
-        loss = F.cross_entropy(outputs.logits, labels)
+        outputs = model(input_ids, attention_mask=attention_mask,
+                        labels=labels.float())
+        loss = outputs.loss
         loss.backward()
         overall_loss += loss.detach().cpu()
         iter +=1
@@ -109,7 +110,7 @@ for i_question, distances in tqdm(enumerate(X_dist), desc="data/wt-expert-rating
         attention_mask = torch.tensor(encodings['attention_mask']).view(1, -1).to(device)
         outputs = model(input_ids,
               attention_mask=attention_mask)
-        logits.append(outputs.logits[0][1].detach().cpu())
-    for i_explanation in np.argsort(logits)[::-1]:
+        logits.append(outputs.logits[0][0].detach().cpu())
+    for i_explanation in np.argsort(distances)[:100][np.argsort(logits)[::-1]]:
         print('{}\t{}'.format(df_q.loc[i_question]['qid'], df_e.loc[i_explanation]['uid']))
 
