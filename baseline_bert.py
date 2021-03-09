@@ -103,7 +103,7 @@ X_dist = cosine_distances(X_q, X_e)
 for i_question, distances in tqdm(enumerate(X_dist), desc="data/wt-expert-ratings.dev.json", total=X_q.shape[0]):
     logits = []
     for i_explanation in np.argsort(distances)[:100]:
-        text = df_q.loc[i_question]["question"] + " [DOCUMENT] " + df_e.loc[i_explanation]["text"]
+        text = df_q.loc[i_question]["question"] + " [SEP] " + df_e.loc[i_explanation]["text"]
         encodings = tokenizer(text, padding=True, truncation=True)
         input_ids = torch.tensor(encodings['input_ids']).view(1, -1).to(device)
         attention_mask = torch.tensor(encodings['attention_mask']).view(1, -1).to(device)

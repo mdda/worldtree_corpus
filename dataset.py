@@ -24,7 +24,7 @@ class QuestionRatings(torch.utils.data.Dataset):
                             relevance, "is_gold": is_gold, "gold_role": gold_role})
 
         df = pd.DataFrame(question_ratings)
-        text = df.question_text + " [DOCUMENT] " + df.document_text
+        text = df.question_text + " [SEP] " + df.document_text
         self.encodings = tokenizer(text.tolist(), padding=True,
                                    truncation=True)
         self.labels = df.is_gold.astype(int)
