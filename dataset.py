@@ -12,6 +12,7 @@ class QuestionRatings(torch.utils.data.Dataset):
         for question_rating in questions_file["rankingProblems"]:
             question_id = question_rating["qid"]
             question_text = question_rating["queryText"]
+            # rename to explanation
             for document in question_rating["documents"]:
                 document_id = document["uuid"]
                 document_text = document["docText"]
@@ -29,7 +30,7 @@ class QuestionRatings(torch.utils.data.Dataset):
         if tokenizer:
             self.encodings = tokenizer(text.tolist(), padding=True,
                                     truncation=True)
-        self.labels = df.is_gold.astype(int)
+        self.labels = df.relevance/max(df.relevance)
 
     def get_question(self, question_id):
         questions = self.df.loc[self.df['question_id'] == question_id]
