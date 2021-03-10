@@ -13,19 +13,19 @@ class QuestionRatings(torch.utils.data.Dataset):
             question_id = question_rating["qid"]
             question_text = question_rating["queryText"]
             # rename to explanation
-            for document in question_rating["documents"]:
-                document_id = document["uuid"]
-                document_text = document["docText"]
-                relevance = document["relevance"]
-                is_gold = document["isGoldWT21"]
-                gold_role = document["goldRole"]
+            for explanation in question_rating["documents"]:
+                explanation_id = explanation["uuid"]
+                explanation_text = explanation["docText"]
+                relevance = explanation["relevance"]
+                is_gold = explanation["isGoldWT21"]
+                gold_role = explanation["goldRole"]
                 question_ratings.append({"question_id": question_id, "question_text":
-                            question_text, "document_id": document_id,
-                            "document_text": document_text, "relevance":
+                            question_text, "explanation_id": explanation_id,
+                            "explanation_text": explanation_text, "relevance":
                             relevance, "is_gold": is_gold, "gold_role": gold_role})
 
         df = pd.DataFrame(question_ratings)
-        text = df.question_text + " [SEP] " + df.document_text
+        text = df.question_text + " [SEP] " + df.explanation_text
         self.df = df
         if tokenizer:
             self.encodings = tokenizer(text.tolist(), padding=True,
@@ -39,12 +39,12 @@ class QuestionRatings(torch.utils.data.Dataset):
         else:
             raise ValueError(f"{question_id} does not exist!")
 
-    def get_document(self, document_id):
-        documents = self.df.loc[self.df['document_id'] == document_id]
-        if len(documents) > 0:
-            return documents.loc[0].document_text
+    def get_explanation(self, explanation_id):
+        explanations = self.df.loc[self.df['explanation_id'] == explanation_id]
+        if len(explanations) > 0:
+            return explanations.loc[0].explanation_text
         else:
-            raise ValueError(f"{document_id} does not exist!")
+            raise ValueError(f"{explanation_id} does not exist!")
 
     def __len__(self):
         return len(self.labels)
