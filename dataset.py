@@ -31,6 +31,20 @@ class QuestionRatings(torch.utils.data.Dataset):
                                     truncation=True)
         self.labels = df.is_gold.astype(int)
 
+    def get_question(self, question_id):
+        questions = self.df.loc[self.df['question_id'] == question_id]
+        if len(questions) > 0:
+            return questions.loc[0].question_text
+        else:
+            raise ValueError(f"{question_id} does not exist!")
+
+    def get_document(self, document_id):
+        documents = self.df.loc[self.df['document_id'] == document_id]
+        if len(documents) > 0:
+            return documents.loc[0].document_text
+        else:
+            raise ValueError(f"{document_id} does not exist!")
+
     def __len__(self):
         return len(self.labels)
 
