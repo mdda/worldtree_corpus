@@ -25,12 +25,15 @@ class QuestionRatings(torch.utils.data.Dataset):
                             relevance, "is_gold": is_gold, "gold_role": gold_role})
 
         df = pd.DataFrame(question_ratings)
-        text = df.question_text + " [SEP] " + df.explanation_text
-        self.df = df
+        df['text'] = self.concat_question_explanation(df.question_text, df.explanation_text)
         if tokenizer:
-            self.encodings = tokenizer(text.tolist(), padding=True,
+            self.encodings = tokenizer(df.text.tolist(), padding=True,
                                     truncation=True)
         self.labels = df.relevance/max(df.relevance)
+        self.df = df
+
+    def concat_question_explanation(self, question, explanation):
+        return question + " [SEP] " + explanation
 
     def get_question(self, question_id):
         questions = self.df.loc[self.df['question_id'] == question_id]
