@@ -4,7 +4,7 @@ import torch
 import pandas as pd
 
 class QuestionRatings(torch.utils.data.Dataset):
-    def __init__(self, path, tokenizer):
+    def __init__(self, path, tokenizer=None):
         with open(path, "rb") as f:
             questions_file = json.load(f)
         question_ratings = []
@@ -25,8 +25,10 @@ class QuestionRatings(torch.utils.data.Dataset):
 
         df = pd.DataFrame(question_ratings)
         text = df.question_text + " [SEP] " + df.document_text
-        self.encodings = tokenizer(text.tolist(), padding=True,
-                                   truncation=True)
+        self.df = df
+        if tokenizer:
+            self.encodings = tokenizer(text.tolist(), padding=True,
+                                    truncation=True)
         self.labels = df.is_gold.astype(int)
 
     def __len__(self):
