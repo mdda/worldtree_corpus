@@ -1,3 +1,4 @@
+import os
 import json
 
 import torch
@@ -35,6 +36,10 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
     def concat_question_explanation(self, question, explanation):
         return question + " [SEP] " + explanation
 
+    @property
+    def questions(self):
+        return pd.DataFrame(self.df, columns=["question_id", "question_text"])
+
     def get_question(self, question_id):
         questions = self.df.loc[self.df['question_id'] == question_id]
         if len(questions) > 0:
@@ -57,3 +62,36 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
                 self.encodings.items()}
         item['labels'] = torch.tensor(self.labels[i])
         return item
+
+class ExplanationDataset(torch.utils.data.Dataset):
+    def __init__(self, path_dir):
+        self.path_dir = path_dir
+
+    @property
+    def explanations(self):
+        explanations = []
+        for path, _, files in os.walk(self.path_dir):
+            for file in files:
+                explanations += self._read_explanations(os.path.join(path, file))
+        explanations_df = pd.DataFrame(explanations, columns=('eid', 'explanation'))
+        return explanations_df
+
+    @staticmethod
+    def _read_explanations(path):
+        header = []
+        uid = None
+
+        df = pd.read_csv(path, sep='\t', dtype=str)
+
+        for name in df.columns:
+            if name.startswith('[SKIP]'):
+                if 'UID' in name and not uid:
+                    uid = name
+            else:
+                header.append(name)
+
+        if not uid or len(df) == 0:
+            warnings.warn('Possibly misformatted file: ' + path)
+            return []
+
+        return df.apply(lambda r: (r[uid], ' '.join(str(s) for s in list(r[header]) if not pd.isna(s))), 1).tolist()
