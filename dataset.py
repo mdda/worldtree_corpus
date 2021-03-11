@@ -82,7 +82,9 @@ class ExplanationDataset(torch.utils.data.Dataset):
         for path, _, files in os.walk(self.path_dir):
             for file in files:
                 explanations += self._read_explanations(os.path.join(path, file))
-        explanations_df = pd.DataFrame(explanations, columns=("eid", "explanation"))
+        explanations_df = pd.DataFrame(
+            explanations, columns=("explanation_id", "explanation_text")
+        )
         return explanations_df
 
     @staticmethod
