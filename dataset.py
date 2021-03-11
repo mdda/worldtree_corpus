@@ -50,7 +50,7 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
         return pd.DataFrame(
             self.df.drop_duplicates("question_id"),
             columns=["question_id", "question_text"],
-        )
+        ).reset_index(drop=True)
 
     def get_question(self, question_id):
         questions = self.df.loc[self.df["question_id"] == question_id]
