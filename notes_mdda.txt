@@ -2,7 +2,7 @@
   *  http://cognitiveai.org/explanationbank/
   *  https://github.com/cognitiveailab/tg2021task
 
-*  https://competitions.codalab.org/competitions/23615
+*  https://competitions.codalab.org/competitions/29228
 
 
 ## Important dates : 
@@ -12,6 +12,7 @@ Important Dates
 # NOW
 2021-03-10: Test data release; Evaluation start
 2021-03-24: Evaluation end
+
 2021-04-01: System description paper deadline
 2021-04-13: Deadline for reviews of system description papers
 2021-04-15: Author notifications
@@ -67,6 +68,8 @@ git checkout -b textgraphs_2021 origin/textgraphs_2021
 ./run_setup.bash
 ./run_baseline.bash
 
+
+
 # train.baseline.txt => 0.2469 MAP locally
 # dev.baseline.txt   => 0.2550 MAP locally
 # test.baseline.txt  => 0.2347 MAP (Test uploaded on 2020-08-31)
@@ -81,6 +84,8 @@ git checkout -b textgraphs_2021 origin/textgraphs_2021
 
 git config --global credential.helper cache
 git config --global credential.helper 'cache --timeout=36000'  # 10hrs
+
+
 
 
 https://github.com/VHRanger/nodevectors
@@ -122,4 +127,5 @@ pip install torch-geometric
 b69d-9d08-0ad6-3023 : TWICE in UNIT.tsv
 
 https://www.sbert.net/docs/usage/computing_sentence_embeddings.html
+
 
