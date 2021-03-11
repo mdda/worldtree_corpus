@@ -1,0 +1,125 @@
+*  https://sites.google.com/view/textgraphs2021
+  *  http://cognitiveai.org/explanationbank/
+  *  https://github.com/cognitiveailab/tg2021task
+
+*  https://competitions.codalab.org/competitions/23615
+
+
+## Important dates : 
+
+Important Dates
+2021-02-15: Training data release
+# NOW
+2021-03-10: Test data release; Evaluation start
+2021-03-24: Evaluation end
+2021-04-01: System description paper deadline
+2021-04-13: Deadline for reviews of system description papers
+2021-04-15: Author notifications
+2021-04-26: Camera-ready description paper deadline
+2021-06-11: TextGraphs-15 workshop
+
+To encourage transparency and replicability, all teams must publish their : 
+  code, 
+  tuning procedures, and 
+  instructions for running their models with their submission of shared task papers.
+
+
+
+*   Train = 2207 examples
+*   Dev   =  496 examples
+*   Test  = 1664 examples
+
+## Scores
+
+(2020-09-02)
+  Username    Score   
+1	alvysinger  0.5815
+2	webbley     0.5809
+3	aisys       0.5233
+
+(2020-09-19)
+  Username    Score   
+1	webbley     0.5831 (increased)
+2	alvysinger  0.5815 (same)
+3	aisys       0.5233 (same)
+
+(2020-09-21)
+#	Username	Score
+1	webbley     0.6033 (increased)
+2	alvysinger  0.5815 (same)
+3	aisys       0.5233 (same)
+
+6	redken	3	09/21/20		0.4793 (5)
+
+
+
+https://aideadlin.es/?sub=NLP
+
+
+
+## Installation
+
+git clone https://github.com/mdda/worldtree_corpus.git
+cd worldtree_corpus  # i.e. the REPO root directory
+#git branch -a
+git checkout -b textgraphs_2021 origin/textgraphs_2021
+
+./run_setup.bash
+./run_baseline.bash
+
+# train.baseline.txt => 0.2469 MAP locally
+# dev.baseline.txt   => 0.2550 MAP locally
+# test.baseline.txt  => 0.2347 MAP (Test uploaded on 2020-08-31)
+
+## ...
+
+*  Need a lemmatizer to correctly resolve all 'node words' in the explanations
+   *  Good resource : https://www.machinelearningplus.com/nlp/lemmatization-examples-python/
+   
+*  Can use this to identify nodes in Q&s 
+
+
+git config --global credential.helper cache
+git config --global credential.helper 'cache --timeout=36000'  # 10hrs
+
+
+https://github.com/VHRanger/nodevectors
+https://github.com/benedekrozemberczki/KarateClub
+https://networkx.github.io/documentation/stable/reference/algorithms/shortest_paths.html
+
+
+Applying Graph Neural Networks on Heterogeneous Nodes and Edge Features
+  https://grlearning.github.io/papers/6.pdf
+
+
+https://twitter.com/PetarV_93/status/1306689702020382720
+
+https://petar-v.com/GAT/
+
+  Gated Attention Networks (GaAN) (Zhang et al., 2018), 
+    where gating mechanisms are inserted into the multi-head attention system of GATs, 
+    in order to give different value to different heads’ computations. 
+    Several challenging baselines are outperformed on both 
+    inductive node classification tasks (Reddit, PPI) and 
+    a traffic speed forecasting task (METR-LA).
+
+
+GRAPH CONVOLUTIONAL NETWORKS
+  THOMAS KIPF, 30 SEPTEMBER 2016
+    https://tkipf.github.io/graph-convolutional-networks/
+
+
+CUDA=cu102
+pip install torch-scatter==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.6.0.html
+pip install torch-sparse==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.6.0.html
+pip install torch-cluster==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.6.0.html
+pip install torch-spline-conv==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.6.0.html
+pip install torch-geometric
+
+5095-dfd3-1847-a4a0 : TWICE in RELATIONSHIP.tsv
+9b87-dd15-0cc5-32aa : TWICE in OPPOSITES.tsv
+5689-a3ff-212f-560a : TWICE in OPPOSITES.tsv
+b69d-9d08-0ad6-3023 : TWICE in UNIT.tsv
+
+https://www.sbert.net/docs/usage/computing_sentence_embeddings.html
+
