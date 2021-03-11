@@ -13,7 +13,7 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
 
         for question_rating in questions_file["rankingProblems"]:
             question_id = question_rating["qid"]
-            question_text = question_rating["queryText"]
+            question_text = question_rating["queryText"].replace("[ANSWER]", "")
             # rename to explanation
             for explanation in question_rating["documents"]:
                 explanation_id = explanation["uuid"]
