@@ -11,7 +11,7 @@ from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
 
-from dataset import QuestionRatings
+from dataset import QuestionRatingDataset
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -21,7 +21,7 @@ tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
 model.to(device)
 model.train()
 
-train_dataset = QuestionRatings("data/wt-expert-ratings.train.json", tokenizer)
+train_dataset = QuestionRatingDataset("data/wt-expert-ratings.train.json", tokenizer)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32,
                                            shuffle=True)
 

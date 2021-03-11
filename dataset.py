@@ -3,7 +3,7 @@ import json
 import torch
 import pandas as pd
 
-class QuestionRatings(torch.utils.data.Dataset):
+class QuestionRatingDataset(torch.utils.data.Dataset):
     def __init__(self, path, tokenizer=None):
         with open(path, "rb") as f:
             questions_file = json.load(f)
