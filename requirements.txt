@@ -1,3 +1,5 @@
 numpy
 pandas
 sklearn
+torch
+transformers
