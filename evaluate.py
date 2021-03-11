@@ -13,8 +13,10 @@ import pandas as pd
 try:
     from tqdm import tqdm
 except ImportError:
+
     def tqdm(iterable: Iterable, **kwargs) -> Iterable:
         return iterable
+
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -66,10 +68,12 @@ def main():
 
     rating_threshold = 0
 
-    ndcg_score = mean_average_ndcg(gold_explanations, preds, rating_threshold,
-                                   False, args.tqdm)
-    oracle_ndcg_score = mean_average_ndcg(gold_explanations, preds,
-                                          rating_threshold, True, args.tqdm)
+    ndcg_score = mean_average_ndcg(
+        gold_explanations, preds, rating_threshold, False, args.tqdm
+    )
+    oracle_ndcg_score = mean_average_ndcg(
+        gold_explanations, preds, rating_threshold, True, args.tqdm
+    )
     print(f"Mean NDCG Score : {ndcg_score}")
     print(f"Oracle Mean NDCG Score : {oracle_ndcg_score}")
 
@@ -79,7 +83,7 @@ def mean_average_ndcg(
     predicted: Dict[str, List[str]],
     rating_threshold: int,
     oracle: bool,
-    use_tqdm: bool
+    use_tqdm: bool,
 ) -> float:
     """Calculate the Mean Average NDCG
 
@@ -130,6 +134,7 @@ def mean_average_ndcg(
         )
 
     return mean_average_ndcg
+
 
 def oracle_ndcg(
     gold: Dict[str, float],
@@ -197,6 +202,7 @@ def oracle_ndcg(
         return 0.0
 
     return dcg(relevance, alternate) / ideal_dcg
+
 
 def ndcg(
     gold: Dict[str, float],
