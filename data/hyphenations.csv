@@ -1,0 +1,111 @@
+# Don't change the number of characters!
+#tok_txt  = tok_txt.replace("single-celled", "singleXcelled")
+#tok_txt  = tok_txt.replace("single-celled", "single+celled") # Works
+#tok_txt  = tok_txt.replace("single_celled", "singlecelled") # NOPE
+
+battery-operated
+battery-powered
+bi-flagellate
+black-eyed
+bowl-shaped
+box-like
+by-product
+
+# These don't really 'work' : so let spacy split it up
+#carbon-nitrogen
+
+carrion-like
+coal-fire
+cold-blooded
+cold-water
+computer-aided
+cone-shaped
+cross-pollination
+custom-made
+
+# These don't really 'work' : so let spacy split it up
+#dioxide-oxygen
+#carbon dioxide-oxygen,carbon+dioxide+oxygen
+
+disease-causing
+face-centered
+fight-or-flight
+finest-grained
+first-aid
+first-level
+fossil-fuel
+funnel-shaped
+gas-efficient
+Guinea-Bissau
+high-altitude
+high-efficiency
+high-energy
+high-frequency
+high-mass
+high-pressure
+high-quality
+Inverness-shire
+Kinross-shire
+light-year
+long-term
+low-energy
+low-lying
+low-pressure
+
+# Hmm...  Should check final output (fix via keyword relabel)
+main-sequence
+main-sequences
+
+microwave-safe
+mid-sized
+moon-like
+multi-celled
+negatively-charged
+ninety-nine
+no-till
+non-black
+non-contact
+non-living
+non-reactive
+non-salty
+once-living
+positively-charged
+red-dwarf
+remote-control
+rod-shaped
+Ross-shire
+Saffir-Simpson
+self-contained
+single-celled
+six-sided
+Shoemaker-Levy
+single-cell
+Tay-Sachs
+three-dimensional
+trade-off
+tree-growth
+tube-like
+twenty-three
+
+# This means uranium -> lead, so should be separated
+#uranium-lead
+
+U-shaped
+V-shaped
+warm-blooded
+warm-weather
+water-resistance
+water-resistant
+well-drained
+well-rounded
+well-suited
+wind-water
+wood-free
+x-axis
+x-ray
+x-rays
+y-axis
+
+# original spelling mistake
+yellow-dwaf
+yellow-dwarf

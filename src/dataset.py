@@ -17,7 +17,8 @@ from tqdm import tqdm
 import spacy
 nlp = spacy.load("en_core_web_sm", disable=["ner", "deps"])  # "tagger", "parser", 
 
-TASK_BASE = '../tg2020task'
+#TASK_BASE = '../tg2020task'
+TASK_BASE = '../tg2021task/data-evalperiod'
 RDAI_BASE = '../data/'
 
 
@@ -635,7 +636,8 @@ def silent_average_precision_score(gold: List[str], pred: List[str]) -> float:
     return ap / len(gold)
 
 def run_average_precision_sanity_check():
-    sys.path.append("../tg2020task")
+    #sys.path.append("../tg2020task")
+    sys.path.append("../tg2021task")
     import evaluate
     preds=[
         "abcdefghij",
@@ -793,7 +795,7 @@ if '__main__' == __name__:
     #   ?? keywords (via keyword_counts) : for simple string matching
 
     #qanda_train = load_qanda('train')#, regenerate=True) # 1.8MB
-    qanda_dev   = load_qanda('dev')#, regenerate=True)   # 400k in 496 lines
+    #qanda_dev   = load_qanda('dev')#, regenerate=True)   # 400k in 496 lines
     #qanda_test  = load_qanda('test')#, regenerate=True)  # 800k
     
     if False:

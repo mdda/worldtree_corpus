@@ -1,19 +1,27 @@
-black==20.8b1
-numpy==1.20.1
-pandas==1.2.3
-pytest==6.2.2
-scikit-learn==0.24.1
-torch==1.7.1+cu101
-torchaudio==0.7.2
-torchvision==0.8.2+cu101
-tqdm==4.58.0
-transformers==4.3.3
 # virtualenv --system-site-packages -p python3 env38
 # . env38/bin/activate
 # pip install -r requirements.txt
 
+#black==20.8b1
+#numpy==1.20.1
+pandas #==1.2.3
+#pytest==6.2.2
+scikit-learn #==0.24.1
+torch>=1.8
+
+pydantic # ==1.6.1
+torchvision # for url retrieval
+wikiextractor #==0.1
+#allRank # losses - remove lambdaLoss
+
+#torchaudio #==0.7.2
+tqdm #==4.58.0
+transformers #==4.3.3
+
+fire # =baseline-retrieval
+
 PyYAML
-#allRank
+
 #cloud-tpu-client==0.10
 #comet-ml
 #matchzoo-py
@@ -21,7 +29,6 @@ PyYAML
 #paddlepaddle-gpu==1.8.5.post107
 #pandas
 #pgl==1.2.0
-#pydantic==1.6.1
 #python-dotenv==0.14.0
 #pytorch-lightning #==0.9.0
 #rouge-score==0.0.4
@@ -40,7 +47,6 @@ PyYAML
 #tqdm
 #transformers #==3.1.0
 #virtualenv==20.0.31
-#wikiextractor==0.1
 #xmltodict==0.12.0
 
 nbstripout
