@@ -1,8 +1,10 @@
+import os
+
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
 
-from retriever import Retriever, Prediction
+from retriever import Retriever, Prediction, PredictManager
 from dataset import QuestionRatingDataset, ExplanationDataset
 
 
@@ -32,3 +34,31 @@ def test_retriever():
             Prediction(qid=questions.loc[i_question]["question_id"], eids=eids)
         )
     assert actual_preds == expected_preds
+
+
+def test_predict_manager_text():
+    questions = QuestionRatingDataset("data/wt-expert-ratings.dev.json").questions
+    explanations = ExplanationDataset("data/tables").explanations
+    fname = "preds_text"
+
+    retriever = Retriever(limit=10)
+    preds = retriever.run(questions, explanations)
+    PredictManager.write(fname, preds)
+    preds_read = PredictManager.read(fname)
+    os.remove(fname)
+
+    assert preds == preds_read
+
+
+def test_predict_manager_pickle():
+    questions = QuestionRatingDataset("data/wt-expert-ratings.dev.json").questions
+    explanations = ExplanationDataset("data/tables").explanations
+    fname = "preds_pickle"
+
+    retriever = Retriever(limit=10)
+    preds = retriever.run(questions, explanations)
+    PredictManager.dump(fname, preds)
+    preds_read = PredictManager.load(fname)
+    os.remove(fname)
+
+    assert preds == preds_read

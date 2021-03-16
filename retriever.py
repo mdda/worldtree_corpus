@@ -1,3 +1,6 @@
+from collections import defaultdict
+import pickle
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
@@ -49,3 +52,35 @@ class Retriever:
             self.vectorizer.transform(questions),
             self.vectorizer.transform(explanations),
         )
+
+
+class PredictManager:
+    @staticmethod
+    def write(path, preds):
+        lines = []
+        for pred in preds:
+            for explanation in pred.eids:
+                lines.append("\t".join([pred.qid, explanation]))
+        with open(path, "w") as f:
+            f.write("\n".join(lines))
+
+    @staticmethod
+    def read(path):
+        qid_preds = defaultdict(list)
+        with open(path, "r") as f:
+            for line in f:
+                line = line.strip()
+                qid, eid = line.split("\t")
+                qid_preds[qid].append(eid)
+        preds = [Prediction(qid=qid, eids=eids) for qid, eids in qid_preds.items()]
+        return preds
+
+    @staticmethod
+    def dump(path, preds):
+        with open(path, "wb") as f:
+            pickle.dump(preds, f)
+
+    @staticmethod
+    def load(path):
+        with open(path, "rb") as f:
+            return pickle.load(f)
