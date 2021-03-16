@@ -72,6 +72,8 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
     def __getitem__(self, i):
         item = {key: torch.tensor(val[i]) for key, val in self.encodings.items()}
         item["labels"] = torch.tensor(self.labels[i])
+        item["question_id"] = self.df.loc[i]["question_id"]
+        item["explanation_id"] = self.df.loc[i]["explanation_id"]
         return item
 
 
