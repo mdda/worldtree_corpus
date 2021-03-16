@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_distances
 
-from retriever import Retriever
+from retriever import Retriever, Prediction
 from dataset import QuestionRatingDataset, ExplanationDataset
 
 
@@ -29,6 +29,6 @@ def test_retriever():
         for i_explanation in np.argsort(distances)[:limit]:
             eids.append(explanations.loc[i_explanation]["explanation_id"])
         expected_preds.append(
-            {"qid": questions.loc[i_question]["question_id"], "eids": eids}
+            Prediction(qid=questions.loc[i_question]["question_id"], eids=eids)
         )
     assert actual_preds == expected_preds

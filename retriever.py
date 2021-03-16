@@ -4,6 +4,21 @@ from tqdm import tqdm
 from ranker import CosineRanker
 
 
+class Prediction:
+    def __init__(self, qid, eids):
+        self.qid = qid
+        self.eids = eids
+
+    def __eq__(self, other):
+        if self.qid != other.qid:
+            return False
+        for e1, e2 in zip(self.eids, other.eids):
+            if e1 != e2:
+                return False
+
+        return True
+
+
 class Retriever:
     vectorizer = TfidfVectorizer()
     ranker = CosineRanker()
@@ -18,13 +33,13 @@ class Retriever:
         preds = []
         for i in tqdm(range(len(ranking))):
             preds.append(
-                {
-                    "qid": questions.loc[i]["question_id"],
-                    "eids": [
+                Prediction(
+                    qid=questions.loc[i]["question_id"],
+                    eids=[
                         explanations.loc[j]["explanation_id"]
                         for j in ranking[i][: self.limit]
                     ],
-                }
+                )
             )
         return preds
 
