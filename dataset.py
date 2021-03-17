@@ -1,5 +1,6 @@
 import os
 import json
+import functools
 from collections import defaultdict
 
 import torch
@@ -62,6 +63,7 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
             gold_preds[row.question_id][row.explanation_id] = row.relevance
         return gold_preds
 
+    @functools.lru_cache(maxsize=4)
     def get_question(self, question_id):
         questions = self.df.loc[self.df["question_id"] == question_id]
         if len(questions) > 0:
