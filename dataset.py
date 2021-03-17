@@ -1,5 +1,6 @@
 import os
 import json
+from collections import defaultdict
 
 import torch
 import pandas as pd
@@ -51,6 +52,13 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
             self.df.drop_duplicates("question_id"),
             columns=["question_id", "question_text"],
         ).reset_index(drop=True)
+
+    @property
+    def gold_predictions(self):
+        gold_preds = defaultdict(dict)
+        for index, row in self.df.iterrows():
+            gold_preds[row.question_id][row.explanation_id] = row.relevance
+        return gold_preds
 
     def get_question(self, question_id):
         questions = self.df.loc[self.df["question_id"] == question_id]
