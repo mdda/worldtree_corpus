@@ -1,5 +1,6 @@
 from typing import Dict, List, Iterable
 
+from joblib import Parallel, delayed
 from tqdm import tqdm
 import numpy as np
 
@@ -10,12 +11,27 @@ from dataset import QuestionRatingDataset
 def mean_average_ndcg(gold_preds, preds, rating_threshold):
     scores = []
     oracle_scores = []
-    for pred in tqdm(preds):
-        qid = pred.qid
-        score = ndcg(gold_preds[qid], pred.eids, rating_threshold)
-        oracle_score = ndcg(gold_preds[qid], pred.eids, rating_threshold, oracle=True)
-        scores.append(score)
-        oracle_scores.append(oracle_score)
+    # joblib this
+    if True:
+        scores = Parallel(n_jobs=12)(
+            delayed(ndcg)(gold_preds[pred.qid], pred.eids, rating_threshold)
+            for pred in tqdm(preds, desc="ndcg")
+        )
+        oracle_scores = Parallel(n_jobs=12)(
+            delayed(ndcg)(
+                gold_preds[pred.qid], pred.eids, rating_threshold, oracle=True
+            )
+            for pred in tqdm(preds, desc="oracle ndcg")
+        )
+    else:
+        for pred in tqdm(preds):
+            qid = pred.qid
+            score = ndcg(gold_preds[qid], pred.eids, rating_threshold)
+            oracle_score = ndcg(
+                gold_preds[qid], pred.eids, rating_threshold, oracle=True
+            )
+            scores.append(score)
+            oracle_scores.append(oracle_score)
     print(f"ndcg: {np.average(scores)}")
     print(f"oracle ndcg: {np.average(oracle_scores)}")
 
