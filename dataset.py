@@ -137,17 +137,18 @@ class ExplanationDataset(torch.utils.data.Dataset):
         explanations_df = pd.DataFrame(
             explanations, columns=("explanation_id", "explanation_text")
         )
-        self.df = explanations_df
+        self.df = explanations_df.set_index("explanation_id")
         return explanations_df
 
     def get_explanation(self, explanation_id):
         if self.df is None:
             self.explanations
-        explanations = self.df.loc[self.df["explanation_id"] == explanation_id]
-        if len(explanations) > 0:
-            return explanations.iloc[0].explanation_text
-        else:
-            raise ValueError(f"{explanation_id} does not exist!")
+        return self.df.xs(explanation_id).explanation_text
+        # explanations = self.df.loc[self.df["explanation_id"] == explanation_id]
+        # if len(explanations) > 0:
+        #     return explanations.iloc[0].explanation_text
+        # else:
+        #     raise ValueError(f"{explanation_id} does not exist!")
 
     @staticmethod
     def _read_explanations(path):
