@@ -74,7 +74,11 @@ class TransformerRanker(pl.LightningModule):
                 for k, v in sorted(explanation_logits.items(), key=lambda i: i[1])[::-1]
             ]
             preds.append(Prediction(qid=question_id, eids=eids))
-        PredictManager.write(os.path.join(self.log_dir, "predict.dev.model.txt"), preds)
+        if self.trainer.log_dir is None:
+            predict_dir = ""
+        else:
+            predict_dir = self.trainer.log_dir
+        PredictManager.write(os.path.join(predict_dir, "predict.dev.model.txt"), preds)
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=5e-5)
@@ -124,7 +128,11 @@ def cli_main():
     pred_dataloader = torch.utils.data.DataLoader(
         pred_dataset, batch_size=args.batch_size, shuffle=False
     )
-    trainer.test(test_dataloaders=pred_dataloader)
+    if args.fast_dev_run > 0:
+        trainer.test(model, test_dataloaders=pred_dataloader)
+    else:
+        # automatically choose best model
+        trainer.test(test_dataloaders=pred_dataloader)
 
 
 if __name__ == "__main__":
