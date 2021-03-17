@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 
 from transformers import (
-    DistilBertForSequenceClassification,
-    DistilBertTokenizerFast,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
     AdamW,
 )
 
@@ -20,8 +20,8 @@ from retriever import PredictManager, Prediction
 class TransformerRanker(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.transformer = DistilBertForSequenceClassification.from_pretrained(
-            "distilbert-base-uncased", num_labels=1
+        self.transformer = AutoModelForSequenceClassification.from_pretrained(
+            "bert-base-uncased", num_labels=1
         )
 
     def forward(self, x):
@@ -88,7 +88,7 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
-    tokenizer = DistilBertTokenizerFast.from_pretrained("distilbert-base-uncased")
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     # data
     train_dataset = QuestionRatingDataset(
         "data/wt-expert-ratings.train.json", tokenizer
