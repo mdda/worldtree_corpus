@@ -87,6 +87,7 @@ def cli_main():
     # args
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
+    parser.add_argument("--batch_size", type=int, default=16)
     args = parser.parse_args()
 
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
@@ -96,9 +97,11 @@ def cli_main():
     )
     val_dataset = QuestionRatingDataset("data/wt-expert-ratings.dev.json", tokenizer)
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=32, shuffle=True
+        train_dataset, batch_size=args.batch_size, shuffle=True
     )
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=32, shuffle=False)
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=args.batch_size, shuffle=False
+    )
 
     # model
     model = TransformerRanker()
@@ -119,7 +122,7 @@ def cli_main():
         "predict.dev.baseline-retrieval.txt", tokenizer, val_dataset, exp_dataset
     )
     pred_dataloader = torch.utils.data.DataLoader(
-        pred_dataset, batch_size=32, shuffle=False
+        pred_dataset, batch_size=args.batch_size, shuffle=False
     )
     trainer.test(test_dataloaders=pred_dataloader)
 
