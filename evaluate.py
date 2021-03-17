@@ -1,5 +1,4 @@
 from typing import Dict, List, Iterable
-import warnings
 
 from tqdm import tqdm
 import numpy as np
@@ -36,9 +35,6 @@ def ndcg(
         rating_threshold (int): Threshold of gold ratings to consider for NDCG calcuation
         alternate (bool, optional): True to use the alternate scoring (intended to place more emphasis on relevant results). Defaults to True.
 
-    Raises:
-        Exception: If ids are missing from prediction. Raises warning.
-
     Returns:
         float: NDCG score
     """
@@ -58,9 +54,6 @@ def ndcg(
     missing_ids = [g_id for g_id in gold if g_id not in predicted]
 
     if len(missing_ids) > 0:
-        warnings.warn(
-            f"Missing gold ids from prediction. Missing ids will be appended to 10**6 position"
-        )
         padded = np.zeros(10 ** 6)
         for index, g_id in enumerate(missing_ids):
             padded[index] = gold[g_id]
