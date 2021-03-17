@@ -55,14 +55,14 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
     def get_question(self, question_id):
         questions = self.df.loc[self.df["question_id"] == question_id]
         if len(questions) > 0:
-            return questions.loc[0].question_text
+            return questions.iloc[0].question_text
         else:
             raise ValueError(f"{question_id} does not exist!")
 
     def get_explanation(self, explanation_id):
         explanations = self.df.loc[self.df["explanation_id"] == explanation_id]
         if len(explanations) > 0:
-            return explanations.loc[0].explanation_text
+            return explanations.iloc[0].explanation_text
         else:
             raise ValueError(f"{explanation_id} does not exist!")
 
