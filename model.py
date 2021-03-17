@@ -1,3 +1,4 @@
+import os
 from argparse import ArgumentParser
 from collections import defaultdict
 from tqdm import tqdm
@@ -73,7 +74,7 @@ class TransformerRanker(pl.LightningModule):
                 for k, v in sorted(explanation_logits.items(), key=lambda i: i[1])[::-1]
             ]
             preds.append(Prediction(qid=question_id, eids=eids))
-        PredictManager.write("predict.dev.model.txt", preds)
+        PredictManager.write(os.path.join(self.log_dir, "predict.dev.model.txt"), preds)
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=5e-5)
@@ -120,7 +121,7 @@ def cli_main():
     pred_dataloader = torch.utils.data.DataLoader(
         pred_dataset, batch_size=32, shuffle=False
     )
-    trainer.test(model, test_dataloaders=pred_dataloader)
+    trainer.test(test_dataloaders=pred_dataloader)
 
 
 if __name__ == "__main__":
