@@ -88,9 +88,12 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
 class ExplanationDataset(torch.utils.data.Dataset):
     def __init__(self, path_dir):
         self.path_dir = path_dir
+        self.df = None
 
     @property
     def explanations(self):
+        if self.df is not None:
+            return self.df
         explanations = []
         for path, _, files in os.walk(self.path_dir):
             for file in files:
@@ -98,7 +101,17 @@ class ExplanationDataset(torch.utils.data.Dataset):
         explanations_df = pd.DataFrame(
             explanations, columns=("explanation_id", "explanation_text")
         )
+        self.df = explanations_df
         return explanations_df
+
+    def get_explanation(self, explanation_id):
+        if self.df is None:
+            self.explanations
+        explanations = self.df.loc[self.df["explanation_id"] == explanation_id]
+        if len(explanations) > 0:
+            return explanations.iloc[0].explanation_text
+        else:
+            raise ValueError(f"{explanation_id} does not exist!")
 
     @staticmethod
     def _read_explanations(path):
