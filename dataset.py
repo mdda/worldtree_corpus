@@ -5,6 +5,8 @@ from collections import defaultdict
 import torch
 import pandas as pd
 
+from retriever import PredictManager
+
 
 class QuestionRatingDataset(torch.utils.data.Dataset):
     def __init__(self, path, tokenizer=None):
@@ -80,6 +82,38 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
     def __getitem__(self, i):
         item = {key: torch.tensor(val[i]) for key, val in self.encodings.items()}
         item["labels"] = torch.tensor(self.labels[i])
+        item["question_id"] = self.df.loc[i]["question_id"]
+        item["explanation_id"] = self.df.loc[i]["explanation_id"]
+        return item
+
+
+class PredictDataset(torch.utils.data.Dataset):
+    def __init__(self, path, tokenizer, question_dataset, explanation_dataset):
+        preds = PredictManager.read(path)
+        preds_df = []
+        for pred in preds:
+            for eid in pred.eids:
+                preds_df.append(
+                    {
+                        "question_id": pred.qid,
+                        "question_text": question_dataset.get_question(pred.qid),
+                        "explanation_id": eid,
+                        "explanation_text": explanation_dataset.get_explanation(eid),
+                    }
+                )
+        df = pd.DataFrame(preds_df)
+        df["text"] = question_dataset.concat_question_explanation(
+            df.question_text, df.explanation_text
+        )
+        if tokenizer:
+            self.encodings = tokenizer(df.text.tolist(), padding=True, truncation=True)
+        self.df = df
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, i):
+        item = {key: torch.tensor(val[i]) for key, val in self.encodings.items()}
         item["question_id"] = self.df.loc[i]["question_id"]
         item["explanation_id"] = self.df.loc[i]["explanation_id"]
         return item
