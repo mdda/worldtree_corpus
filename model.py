@@ -20,8 +20,9 @@ from evaluate import mean_average_ndcg
 
 
 class TransformerRanker(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, learning_rate=5e-5):
         super().__init__()
+        self.learning_rate = learning_rate
         self.transformer = AutoModelForSequenceClassification.from_pretrained(
             "bert-base-uncased", num_labels=1
         )
@@ -85,7 +86,7 @@ class TransformerRanker(pl.LightningModule):
         PredictManager.write(os.path.join(predict_dir, "predict.dev.model.txt"), preds)
 
     def configure_optimizers(self):
-        optimizer = AdamW(self.parameters(), lr=5e-5)
+        optimizer = AdamW(self.parameters(), lr=self.learning_rate)
         return optimizer
 
 
