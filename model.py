@@ -16,6 +16,7 @@ from transformers import (
 
 from dataset import QuestionRatingDataset, ExplanationDataset, PredictDataset
 from retriever import PredictManager, Prediction
+from evaluate import mean_average_ndcg
 
 
 class TransformerRanker(pl.LightningModule):
@@ -78,6 +79,9 @@ class TransformerRanker(pl.LightningModule):
             predict_dir = ""
         else:
             predict_dir = self.trainer.log_dir
+        dataset = QuestionRatingDataset("data/wt-expert-ratings.dev.json")
+        ge = dataset.gold_predictions
+        mean_average_ndcg(ge, preds, 0)
         PredictManager.write(os.path.join(predict_dir, "predict.dev.model.txt"), preds)
 
     def configure_optimizers(self):
