@@ -48,6 +48,24 @@ class TransformerRanker(pl.LightningModule):
             "bert-base-uncased", num_labels=1
         )
 
+    def freeze_transformer(self,
+            freeze_pos=False,
+            freeze_ln=False,
+            freeze_attn=True,
+            freeze_ff=True,):
+        for name, p in self.transformer.bert.named_parameters():
+            name = name.lower()
+            if 'ln' in name or 'layernorm' in name:
+                p.requires_grad = not freeze_ln
+            elif 'wpe' in name or 'position_embeddings' in name:
+                p.requires_grad = not freeze_pos
+            elif 'mlp' in name or 'dense' in name:
+                p.requires_grad = not freeze_ff
+            elif 'attn' in name or 'attention' in name:
+                p.requires_grad = not freeze_attn
+            else:
+                p.requires_grad = False
+
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
         embedding = self.transformer(x["input_ids"], attention_mask=x["attention_mask"])
