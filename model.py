@@ -41,11 +41,12 @@ class BatchNorm1dFlat(nn.BatchNorm1d):
         return super().forward(x).view(*f, c)
 
 class TransformerRanker(pl.LightningModule):
-    def __init__(self, learning_rate=5e-5):
+    def __init__(self, learning_rate=5e-5, num_labels=1):
         super().__init__()
         self.learning_rate = learning_rate
+        self.num_labels = num_labels
         self.transformer = AutoModelForSequenceClassification.from_pretrained(
-            "bert-base-uncased", num_labels=1
+            "bert-base-uncased", num_labels=self.num_labels
         )
 
     def freeze_transformer(self,
@@ -74,7 +75,10 @@ class TransformerRanker(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"]
-        labels = batch["labels"].float()
+        if self.num_labels == 1:
+            labels = batch["labels"].float()
+        else:
+            labels = batch["classes"]
         outputs = self.transformer(
             input_ids, attention_mask=attention_mask, labels=labels
         )
@@ -83,7 +87,10 @@ class TransformerRanker(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"]
-        labels = batch["labels"].float()
+        if self.num_labels == 1:
+            labels = batch["labels"].float()
+        else:
+            labels = batch["classes"]
         outputs = self.transformer(
             input_ids, attention_mask=attention_mask, labels=labels
         )
@@ -106,14 +113,26 @@ class TransformerRanker(pl.LightningModule):
             for pred in zip(out["question_id"], out["explanation_id"], out["logits"]):
                 question_id = pred[0]
                 explanation_id = pred[1]
-                logits = pred[2][0]
+                logits = pred[2]
                 pred_logits[question_id][explanation_id] = logits
         preds = []
         for question_id, explanation_logits in pred_logits.items():
-            eids = [
-                k
-                for k, v in sorted(explanation_logits.items(), key=lambda i: i[1])[::-1]
-            ]
+            if self.num_labels == 1:
+                eids = [
+                    k
+                    for k, v in sorted(
+                        explanation_logits.items(), key=lambda i: torch.max(i[1])
+                    )[::-1]
+                ]
+            else:
+                eids = [
+                    k
+                    for k, v in sorted(
+                        explanation_logits.items(),
+                        key=lambda i: (torch.argmax(i[1]), torch.max(i[1])),
+                        reverse=True,
+                    )
+                ]
             preds.append(Prediction(qid=question_id, eids=eids))
         if self.trainer.log_dir is None:
             predict_dir = ""

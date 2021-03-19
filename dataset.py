@@ -44,6 +44,7 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
         if tokenizer:
             self.encodings = tokenizer(df.text.tolist(), padding=True, truncation=True)
         self.labels = df.relevance / max(df.relevance)
+        self.classes = (df.relevance + 1) // 2
         self.df = df
 
     def concat_question_explanation(self, question, explanation):
@@ -84,6 +85,7 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
     def __getitem__(self, i):
         item = {key: torch.tensor(val[i]) for key, val in self.encodings.items()}
         item["labels"] = torch.tensor(self.labels[i])
+        item["classes"] = torch.tensor(self.classes[i])
         item["question_id"] = self.df.loc[i]["question_id"]
         item["explanation_id"] = self.df.loc[i]["explanation_id"]
         return item
