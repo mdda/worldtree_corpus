@@ -18,8 +18,10 @@ import spacy
 nlp = spacy.load("en_core_web_sm", disable=["ner", "deps"])  # "tagger", "parser", 
 
 #TASK_BASE = '../tg2020task'
-TASK_BASE = '../tg2021task/data-evalperiod'
-RDAI_BASE = '../data/'
+#TASK_BASE = '../tg2021task/data-evalperiod'
+TASK_BASE = '/mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/tg2021task/data-evalperiod'
+#RDAI_BASE = '../data/'
+RDAI_BASE = '/mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/data/'
 
 
 # Type-definitions

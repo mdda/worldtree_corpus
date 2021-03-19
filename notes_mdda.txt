@@ -11,6 +11,7 @@ Important Dates
 2021-02-15: Training data release
 # NOW
 2021-03-10: Test data release; Evaluation start
+
 2021-03-24: Evaluation end
 
 2021-04-01: System description paper deadline
@@ -58,6 +59,11 @@ https://aideadlin.es/?sub=NLP
 
 
 
+
+
+
+
+
 ## Installation
 
 git clone https://github.com/mdda/worldtree_corpus.git
@@ -66,7 +72,44 @@ cd worldtree_corpus  # i.e. the REPO root directory
 git checkout -b textgraphs_2021 origin/textgraphs_2021
 
 ./run_setup.bash
-./run_baseline.bash
+# ./run_baseline.bash
+
+
+
+# Do the train split on 2210 Questions : Takes ~420secs
+./baseline_tfidf.py data-evalperiod/tables data-evalperiod/wt-expert-ratings.train.json > predict.baseline_tfidf.train.txt
+# ./evaluate.py --gold data/wt-expert-ratings.dev.json predict.txt
+./evaluate.py --gold data-evalperiod/wt-expert-ratings.train.json predict.baseline_tfidf.train.txt
+# Mean NDCG Score : 0.5167861075889512
+
+
+
+# Do the dev split on 496 Questions : Takes ~100secs
+./baseline_tfidf.py data-evalperiod/tables data-evalperiod/wt-expert-ratings.dev.json > predict.baseline_tfidf.dev.txt
+# ./evaluate.py --gold data/wt-expert-ratings.dev.json predict.txt
+./evaluate.py --gold data-evalperiod/wt-expert-ratings.dev.json predict.baseline_tfidf.dev.txt
+# Mean NDCG Score : 0.513046779054998  (agrees with 0.5130 NDCG given in the GitHub README.md)
+
+
+# Do the text split on 1670 Questions # Actually :: Cannot, since the gold results are unknown to us
+./baseline_tfidf.py data-evalperiod/tables data-evalperiod/wt-expert-ratings.test.json > predict.baseline_tfidf.test.txt
+#./evaluate.py --gold data-evalperiod/wt-expert-ratings.test.json predict.baseline_tfidf.test.txt
+# Guess at site evaluation on test set : 0.5010 (dustalov)
+#   THEREFORE : The expected_test_score = train_score-0.0160
+#   THEREFORE : The expected_test_score =   dev_score-0.0120
+
+
+
+cd ../src
+python baseline_retrieval.py  # Saves to ../predictions/predict.dev.baseline-retrieval.txt
+
+
+
+
+python3 -m pip install --upgrade nni
+
+
+
 
 
 

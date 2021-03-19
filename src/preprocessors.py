@@ -39,7 +39,7 @@ class SpacyProcessor(TextProcessor):
 
 class OnlyGoldWordsProcessor(TextProcessor):
     """
-    What if we can filter the input to only keywords present in gold explanations?
+    What if we can filter the input to only keywords present in gold explanations? (i.e. this is cheating)
     """
 
     base_processor: SpacyProcessor = SpacyProcessor(remove_stopwords=True)

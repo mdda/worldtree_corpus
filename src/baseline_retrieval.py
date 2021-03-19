@@ -28,14 +28,15 @@ from rankers import Ranker, StageRanker, IterativeRanker, deduplicate
 from vectorizers import BM25Vectorizer, TruncatedSVDVectorizer
 
 #sys.path.append("../tg2020task")
-sys.path.append("../tg2021task")
-import evaluate
+#sys.path.append("../tg2021task")
+#import evaluate
 
 
 class Data(BaseModel):
     root: str = "../data"
     #root_gold: str = "../tg2020task"
-    root_gold: str = "../tg2021task/data-evalperiod"
+    #root_gold: str = "../tg2021task/data-evalperiod"
+    root_gold: str = "/mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/tg2021task/data-evalperiod"
     data_split: SplitEnum = SplitEnum.dev
     statements: Optional[List[Statement]]
     questions: Optional[List[QuestionAnswer]]
@@ -44,6 +45,10 @@ class Data(BaseModel):
     @property
     def path_gold(self) -> Path:
         return Path(self.root_gold) / f"questions.{self.data_split}.tsv"
+
+    @property
+    def json_gold(self) -> Path:
+        return Path(self.root_gold) / f"wt-expert-ratings.{self.data_split}.json"
 
     @staticmethod
     def load_jsonl(path: Path) -> List[dict]:
@@ -178,7 +183,7 @@ class PredictManager(BaseModel):
         return preds
 
 import evaluate2020  # Just copied over locally here...
-class Scorer(BaseModel):
+class Scorer2020(BaseModel):
     @staticmethod
     def run(path_gold: Path, path_predict: Path) -> Dict[str, float]:
         gold = evaluate2020.load_gold(str(path_gold))  # noqa
@@ -311,7 +316,7 @@ def main(
         Retriever(
             vectorizer=TruncatedSVDVectorizer(BM25Vectorizer(), n_components=768),
             preproc=KeywordProcessor(),
-        ),  # Dev MAP:  0.3741, recall@512= 0.8772
+        ),  # Dev MAP:  0.3741, recall@512=0.8772
         Retriever(
             preproc=KeywordProcessor(), ranker=IterativeRanker()
         ),  # Dev MAP=0.4704, recall@512=0.8910
@@ -343,9 +348,146 @@ def main(
     preds = r.run(data)
     manager.write(preds, data_split, limit=100)
     if data_split != SplitEnum.test:
-        Scorer().run(data.path_gold, manager.make_path(data_split))
-        ResultAnalyzer().run(data, preds)
+        Scorer2020().run(data.path_gold, manager.make_path(data_split))
+        ResultAnalyzer2020().run(data, preds)
 
+
+import nni
+
+def process_expert_gold(expert_preds: List) -> Dict[str, Dict[str, float]]:
+    return {
+        pred["qid".lower()]: {
+            data["uuid"]: data["relevance"] for data in pred["documents"]
+        }
+        for pred in expert_preds
+    }
+
+
+class Scorer(BaseModel):
+    @staticmethod
+    def run(path_gold: Path, preds: List[Prediction]) -> float:
+        # https://colab.research.google.com/drive/1uexs4-ir0E9dbAsGPbCUJDAhmx0nwRx-?usp=sharing
+        with open(path_gold, "rt") as f:
+            #gold_explanations = evaluate.process_expert_gold(json.load(f)["rankingProblems"])
+            gold_explanations = process_expert_gold(json.load(f)["rankingProblems"])
+        
+        #print(f"{path_gold} : {len(gold_explanations)}, {len(preds)}")
+        limit=100
+
+        coverage_by_score=dict()
+        for score_min in range(0, 6):
+          coverage_arr=[]
+          for p in preds:
+            k = p.qid
+            # Get list of keys in expert ranking in sorted order (if they're worth >0)
+            #expert_order = sorted([(v,k) for k,v in gold_explanations[k].items() if v>0.], reverse=True)
+            expert_set = set(id for id,v in gold_explanations[k].items() if v>score_min) 
+            
+            if len(expert_set)==0: continue
+            
+            predicted_uids = p.uids[:limit]
+            coverage_ids=[ u for u in predicted_uids if u in expert_set ]
+            
+            #print(expert_set)
+            #print([u for u in predicted_uids if u not in expert_set])
+            
+            #print(f"Want {len(expert_set)} and found {len(coverage_ids)} in first {len(predicted_uids)} predictions")
+            coverage_arr.append( len(coverage_ids)/len(expert_set) )
+          coverage = sum(coverage_arr)/len(coverage_arr)
+          print(f"{score_min:.1f} : {coverage:.4f}")
+          coverage_by_score[score_min]=coverage
+        
+        return sum( coverage_by_score.values() )/len(coverage_by_score)
+
+
+def hyperopt(
+    data_split=SplitEnum.dev,
+    #data_split=SplitEnum.train,
+    output_pattern="../predictions/predict.FOLD.baseline-retrieval.txt",
+):
+    data = Data(data_split=data_split)
+    data.load()
+    data.analyze()
+    
+    #print(data.json_gold)
+    #exit(0)
+    
+    manager = PredictManager(file_pattern=output_pattern)
+
+    "@XXnni.variable(nni.choice(50, 250, 500), name=scale)"
+    
+    """@nni.variable(nni.choice(False, True), name=remove_stopwords)"""
+    remove_stopwords=True
+  
+    """@nni.variable(nni.uniform(1, 4), name=nps_base)"""
+    nps_base=1.0
+  
+    """@nni.variable(nni.uniform(1, 3), name=nps_ratio)"""
+    nps_ratio=2.0
+  
+    nps, nps_arr=nps_base, []
+    for _ in range(5):
+      nps_arr.append( int(nps) )
+      nps*=nps_ratio
+    
+    """@nni.variable(nni.uniform(1.1, 1.9), name=scale)"""
+    scale=1.25
+    
+    ## https://www.elastic.co/blog/practical-bm25-part-3-considerations-for-picking-b-and-k1-in-elasticsearch
+    """@nni.variable(nni.choice(False, True), name=bm25_binary)"""
+    bm25_binary=True
+    
+    """@nni.variable(nni.choice(False, True), name=use_idf)"""
+    use_idf=True
+    
+    # The default values of b = 0.75 and k1 = 1.2 work pretty well for most corpuses, so you’re likely fine with the defaults. 
+    #   ... seem to show the optimal b to be in a range of 0.3-0.9
+    #   ... show the optimal k1 to be in a range of 0.5-2.0  [k1 is typically evaluated in the 0 to 3 range]
+    """@nni.variable(nni.uniform(0.3, 0.9), name=b)"""
+    b=0.5
+    """@nni.variable(nni.uniform(0.5, 2.5), name=k1)"""
+    k1=2.0
+
+    r=  Retriever(
+            preproc=SpacyProcessor(remove_stopwords=remove_stopwords),
+            ranker=StageRanker(num_per_stage=nps_arr, scale=scale),   # [1, 2, 4, 8, 16]
+            vectorizer=BM25Vectorizer(binary=bm25_binary, use_idf=use_idf, k1=k1, b=b),
+        ) 
+        
+    preds = r.run(data)
+    # manager.write(preds, data_split, limit=100)
+    if data_split != SplitEnum.test:
+        #Scorer().run(data.path_gold, manager.make_path(data_split))
+        #ResultAnalyzer().run(data, preds)
+        coverage = Scorer().run(data.json_gold, preds)
+        print(f"Coverage : {coverage:.4f}")
+        """@nni.report_final_result(coverage)"""
+        
 
 if __name__ == "__main__":
-    Fire(main)
+    #  https://github.com/google/python-fire
+    #Fire(main)
+    
+    # https://nni.readthedocs.io/en/stable/Tutorial/AnnotationSpec.html?highlight=nni.variable#annotate-variables
+    '''@XXXnni.get_next_parameter()'''
+    Fire(hyperopt)
+
+"""
+Original 'dev' retrieval coverage
+0.0 : 0.6592
+1.0 : 0.6826
+2.0 : 0.7511
+3.0 : 0.8013
+4.0 : 0.9057
+5.0 : 0.9101
+Coverage : 0.7850
+
+Original 'train' retrieval coverage
+0.0 : 0.6637
+1.0 : 0.6873
+2.0 : 0.7543
+3.0 : 0.8018
+4.0 : 0.9037
+5.0 : 0.9260
+Coverage : 0.7895
+"""
