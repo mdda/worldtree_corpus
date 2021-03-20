@@ -170,7 +170,10 @@ def cli_main():
     parser = ArgumentParser()
     parser = pl.Trainer.add_argparse_args(parser)
     parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--num_labels", type=int, default=1)
     args = parser.parse_args()
+    if args.num_labels !=1 and args.num_labels != 4:
+        raise NotImplementedError("num labels can only either be 1 or 4")
 
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     # data
@@ -192,7 +195,7 @@ def cli_main():
     )
 
     # model
-    model = TransformerRanker()
+    model = TransformerRanker(num_labels=args.num_labels)
 
     # ------------
     # training
