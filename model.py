@@ -1,4 +1,5 @@
 import os
+import pickle
 from argparse import ArgumentParser
 from collections import defaultdict
 from tqdm import tqdm
@@ -152,6 +153,9 @@ class TransformerRanker(pl.LightningModule):
         dataset = QuestionRatingDataset("data/wt-expert-ratings.dev.json")
         ge = dataset.gold_predictions
         mean_average_ndcg(ge, preds, 0)
+        with open(os.path.join(predict_dir, "logits.dev.model.pkl"), "wb") as f:
+            pickle.dump(pred_logits, f, pickle.HIGHEST_PROTOCOL)
+
         PredictManager.write(os.path.join(predict_dir, "predict.dev.model.txt"), preds)
 
     def configure_optimizers(self):
