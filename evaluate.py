@@ -1,12 +1,26 @@
 from typing import Dict, List, Iterable
+import pickle
 
 from joblib import Parallel, delayed
 from tqdm import tqdm
 import numpy as np
 
 from retriever import PredictManager
-from dataset import QuestionRatingDataset
+from dataset import QuestionRatingDataset, ExplanationDataset
 
+def error_analysis(gold_preds, preds, pred_logits, dataset, exp_dataset, rating_threshold):
+    scores = Parallel(n_jobs=12)(
+        delayed(ndcg)(gold_preds[pred.qid], pred.eids, rating_threshold)
+        for pred in tqdm(preds, desc="ndcg")
+    )
+    for i, score in enumerate(scores):
+        if score < 0.5:
+            import pdb; pdb.set_trace()
+            qid = preds[i].qid
+            print(dataset.get_question(qid))
+            for eid in preds[i].eids:
+                relevance = gold_preds[qid][eid] if eid in gold_preds[qid] else 0
+                print(f"  {eid} {float(pred_logits[qid][eid]):.2f} {relevance}  {exp_dataset.get_explanation(eid)}")
 
 def mean_average_ndcg(gold_preds, preds, rating_threshold):
     scores = []
@@ -145,6 +159,10 @@ def idcg(relevance: np.array, alternate: bool = True) -> float:
 
 if __name__ == "__main__":
     dataset = QuestionRatingDataset("data/wt-expert-ratings.dev.json")
+    exp_dataset = ExplanationDataset("data/tables")
     ge = dataset.gold_predictions
-    preds = PredictManager.read("predict.dev.model.txt")
-    mean_average_ndcg(ge, preds, 0)
+    preds = PredictManager.read("lightning_logs/version_43/predict.dev.model.txt")
+    # mean_average_ndcg(ge, preds, 0)
+    with open("lightning_logs/version_43/logits.dev.model.pkl", 'rb') as f:
+        pred_logits = pickle.load(f)
+    error_analysis(ge, preds, pred_logits, dataset, exp_dataset, 0)
