@@ -159,10 +159,16 @@ def cli_main():
 
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     # data
+    exp_dataset = ExplanationDataset("data/tables")
     train_dataset = QuestionRatingDataset(
-        "data/wt-expert-ratings.train.json", tokenizer
+        "data/wt-expert-ratings.train.json",
+        explanation_dataset=exp_dataset,
+        neg_samples=20,
+        tokenizer=tokenizer,
     )
-    val_dataset = QuestionRatingDataset("data/wt-expert-ratings.dev.json", tokenizer)
+    val_dataset = QuestionRatingDataset(
+        "data/wt-expert-ratings.dev.json", tokenizer=tokenizer
+    )
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True
     )
@@ -188,7 +194,6 @@ def cli_main():
     # ------------
     # testing
     # ------------
-    exp_dataset = ExplanationDataset("data/tables")
     pred_dataset = PredictDataset(
         "predict.dev.baseline-retrieval.txt", tokenizer, val_dataset, exp_dataset
     )

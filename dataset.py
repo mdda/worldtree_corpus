@@ -1,6 +1,7 @@
 import os
 import json
 import functools
+import random
 from collections import defaultdict
 
 import torch
@@ -10,7 +11,7 @@ from retriever import PredictManager
 
 
 class QuestionRatingDataset(torch.utils.data.Dataset):
-    def __init__(self, path, tokenizer=None):
+    def __init__(self, path, explanation_dataset=None, neg_samples=0, tokenizer=None):
         with open(path, "rb") as f:
             questions_file = json.load(f)
         question_ratings = []
@@ -19,6 +20,7 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
             question_id = question_rating["qid"]
             question_text = question_rating["queryText"].replace("[ANSWER]", "")
             # rename to explanation
+            cur_exp_ids = []
             for explanation in question_rating["documents"]:
                 explanation_id = explanation["uuid"]
                 explanation_text = explanation["docText"]
@@ -36,7 +38,32 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
                         "gold_role": gold_role,
                     }
                 )
+                cur_exp_ids.append(explanation_id)
+            if neg_samples > 0:
+                assert explanation_dataset is not None
+                exp_df = explanation_dataset.explanations
+                len_exp = len(exp_df)
+                rand_indexes = [
+                    random.randrange(0, len_exp) for i in range(neg_samples)
+                ]
+                exp_samples = exp_df.iloc[rand_indexes]
+                for i, exp in exp_samples.iterrows():
+                    if i in cur_exp_ids:
+                        continue
+                    question_ratings.append(
+                        {
+                            "question_id": question_id,
+                            "question_text": question_text,
+                            "explanation_id": i,
+                            "explanation_text": exp.explanation_text,
+                            "relevance": 0,
+                            "is_gold": "0",
+                            "gold_role": "",
+                        }
+                    )
+                    cur_exp_ids.append(i)
 
+        print(len(question_ratings))
         df = pd.DataFrame(question_ratings)
         df["text"] = self.concat_question_explanation(
             df.question_text, df.explanation_text
@@ -140,7 +167,7 @@ class ExplanationDataset(torch.utils.data.Dataset):
             explanations, columns=("explanation_id", "explanation_text")
         )
         self.df = explanations_df.set_index("explanation_id")
-        return explanations_df
+        return self.df
 
     def get_explanation(self, explanation_id):
         if self.df is None:
