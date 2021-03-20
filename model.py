@@ -171,6 +171,7 @@ def cli_main():
     parser = pl.Trainer.add_argparse_args(parser)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_labels", type=int, default=1)
+    parser.add_argument("--neg_samples", type=int, default=0)
     args = parser.parse_args()
     if args.num_labels !=1 and args.num_labels != 4:
         raise NotImplementedError("num labels can only either be 1 or 4")
@@ -181,7 +182,7 @@ def cli_main():
     train_dataset = QuestionRatingDataset(
         "data/wt-expert-ratings.train.json",
         explanation_dataset=exp_dataset,
-        neg_samples=20,
+        neg_samples=args.neg_samples,
         tokenizer=tokenizer,
     )
     val_dataset = QuestionRatingDataset(
