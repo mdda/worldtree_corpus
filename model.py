@@ -18,27 +18,36 @@ from dataset import QuestionRatingDataset, ExplanationDataset, PredictDataset
 from retriever import PredictManager, Prediction
 from evaluate import mean_average_ndcg
 
+
 class LinearLayer(nn.Module):
     " batch_norm -> dropout -> linear -> activation "
-    def __init__(self, in_feat, out_feat, bn=True, dropout=0., activation=None):
+
+    def __init__(self, in_feat, out_feat, bn=True, dropout=0.0, activation=None):
         super().__init__()
         layers = []
-        if bn: layers.append(BatchNorm1dFlat(in_feat))
-        if dropout != 0: layers.append(nn.Dropout(dropout))
+        if bn:
+            layers.append(BatchNorm1dFlat(in_feat))
+        if dropout != 0:
+            layers.append(nn.Dropout(dropout))
         layers.append(nn.Linear(in_feat, out_feat))
-        if activation is not None: layers.append(activation)
+        if activation is not None:
+            layers.append(activation)
         self.linear_layer = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.linear_layer(x)
 
+
 class BatchNorm1dFlat(nn.BatchNorm1d):
     "`nn.BatchNorm1d`, but first flattens leading dimensions"
+
     def forward(self, x):
-        if x.dim()==2: return super().forward(x)
+        if x.dim() == 2:
+            return super().forward(x)
         *f, c = x.shape
         x = x.contiguous().view(-1, c)
         return super().forward(x).view(*f, c)
+
 
 class TransformerRanker(pl.LightningModule):
     def __init__(self, learning_rate=5e-5, num_labels=1):
@@ -49,20 +58,22 @@ class TransformerRanker(pl.LightningModule):
             "bert-base-uncased", num_labels=self.num_labels
         )
 
-    def freeze_transformer(self,
-            freeze_pos=False,
-            freeze_ln=False,
-            freeze_attn=True,
-            freeze_ff=True,):
+    def freeze_transformer(
+        self,
+        freeze_pos=False,
+        freeze_ln=False,
+        freeze_attn=True,
+        freeze_ff=True,
+    ):
         for name, p in self.transformer.bert.named_parameters():
             name = name.lower()
-            if 'ln' in name or 'layernorm' in name:
+            if "ln" in name or "layernorm" in name:
                 p.requires_grad = not freeze_ln
-            elif 'wpe' in name or 'position_embeddings' in name:
+            elif "wpe" in name or "position_embeddings" in name:
                 p.requires_grad = not freeze_pos
-            elif 'mlp' in name or 'dense' in name:
+            elif "mlp" in name or "dense" in name:
                 p.requires_grad = not freeze_ff
-            elif 'attn' in name or 'attention' in name:
+            elif "attn" in name or "attention" in name:
                 p.requires_grad = not freeze_attn
             else:
                 p.requires_grad = False
@@ -182,13 +193,11 @@ def cli_main():
     # ------------
     # training
     # ------------
-    early_stopping_callback = pl.callbacks.EarlyStopping(monitor='val_loss',
-                                                         patience=2)
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor='val_loss',
-                                                       verbose=True)
-    trainer = pl.Trainer.from_argparse_args(args,
-                                            callbacks=[early_stopping_callback,
-                                                      checkpoint_callback])
+    early_stopping_callback = pl.callbacks.EarlyStopping(monitor="val_loss", patience=2)
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="val_loss", verbose=True)
+    trainer = pl.Trainer.from_argparse_args(
+        args, callbacks=[early_stopping_callback, checkpoint_callback]
+    )
     trainer.fit(model, train_loader, val_loader)
 
     # ------------
