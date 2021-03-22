@@ -204,7 +204,10 @@ def cli_main():
     early_stopping_callback = pl.callbacks.EarlyStopping(monitor="val_loss", patience=2)
     checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="val_loss", verbose=True)
     trainer = pl.Trainer.from_argparse_args(
-        args, callbacks=[early_stopping_callback, checkpoint_callback]
+        args, 
+        gpus=1, 
+        #precision=16,
+        callbacks=[early_stopping_callback, checkpoint_callback],
     )
     trainer.fit(model, train_loader, val_loader)
 

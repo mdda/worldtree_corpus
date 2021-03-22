@@ -226,5 +226,15 @@ python baseline_bert.py
 # Dev output directly...  4mins
 
 
-rsync -avz --progress predictions/predict.both.baseline-retrieval.hyperopt.tar.gz andrewsm@simlim:/mnt/data/secure/mdda/rdai/worldtree_corpus/predictions/
+# On local machine:
+#rsync -avz --progress predictions/predict.both.baseline-retrieval.hyperopt.tar.gz andrewsm@simlim:/mnt/data/secure/mdda/rdai/worldtree_corpus/predictions/
+
+pushd predictions
+tar -xzf predict.both.baseline-retrieval.hyperopt.tar.gz
+popd
+
+python model_mdda.py  # Use defaults - initial download : 440Mb
+
+
+
 
