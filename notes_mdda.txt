@@ -196,3 +196,17 @@ Rejected
 I wanted a GPU quota increase from 0 to >0.  I am a Google Developer Expert for ML (GDE ML), which is a Google program, and co-organise the TensorFlow group in Singapore with more than 4000 members.  
 I have credits generously granted to me by Google to conduct a research task.  It is mind-boggling to see that GCP is rejecting my request.
 
+
+
+
+
+
+
+ssh andrewsm@simlim
+cd /mnt/data/secure/mdda/rdai
+git clone https://github.com/mdda/worldtree_corpus.git
+cd worldtree_corpus  # i.e. the REPO root directory
+#git branch -a
+git checkout -b textgraphs_2021 origin/textgraphs_2021
+
+./run_setup.bash
