@@ -217,4 +217,15 @@ ln -s ../tg2021task/data-evalperiod/tables data/tables
 
 . ./env38/bin/activate
 python baseline_bert.py
+# 99% GPU utilisation, 4777Mb GPU RAM used : 8min30 per epoch, 5 epochs => 50mins for training
+0.0675
+0.0459
+0.0341
+0.0267
+0.0215
+# Dev output directly...  4mins
+
+
+
+
 

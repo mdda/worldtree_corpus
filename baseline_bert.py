@@ -27,31 +27,34 @@ tokenizer = DistilBertTokenizerFast.from_pretrained("distilbert-base-uncased")
 model.to(device)
 model.train()
 
-train_dataset = QuestionRatingDataset("data/wt-expert-ratings.train.json", tokenizer=tokenizer)
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+model_file='baseline_bert.model.pytorch'
 
-optimizer = AdamW(model.parameters(), lr=5e-5)
+if not os.path.isfile(model_file):
+  train_dataset = QuestionRatingDataset("data/wt-expert-ratings.train.json", tokenizer=tokenizer)
+  train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
 
-for epoch in range(5):
-    overall_loss = 0
-    iter = 1e-8
-    for batch in tqdm(train_loader, desc=f"{epoch+1}/5: "):
-        optimizer.zero_grad()
-        input_ids = batch["input_ids"].to(device)
-        attention_mask = batch["attention_mask"].to(device)
-        labels = batch["labels"].to(device)
-        outputs = model(input_ids, attention_mask=attention_mask, labels=labels.float())
-        loss = outputs.loss
-        loss.backward()
-        overall_loss += loss.detach().cpu()
-        iter += 1
-        optimizer.step()
-    print(overall_loss / iter)
+  optimizer = AdamW(model.parameters(), lr=5e-5)
 
-model.eval()
+  for epoch in range(5):
+      overall_loss = 0
+      iter = 1e-8
+      for batch in tqdm(train_loader, desc=f"{epoch+1}/5: "):
+          optimizer.zero_grad()
+          input_ids = batch["input_ids"].to(device)
+          attention_mask = batch["attention_mask"].to(device)
+          labels = batch["labels"].to(device)
+          outputs = model(input_ids, attention_mask=attention_mask, labels=labels.float())
+          loss = outputs.loss
+          loss.backward()
+          overall_loss += loss.detach().cpu()
+          iter += 1
+          optimizer.step()
+      print(overall_loss / iter)
 
-torch.save(model.state_dict(), "model")
-model.load_state_dict(torch.load("model"))
+  model.eval()
+  torch.save(model.state_dict(), model_file)
+  
+model.load_state_dict(torch.load(model_file))
 model.eval()
 
 
