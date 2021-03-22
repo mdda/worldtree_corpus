@@ -12,7 +12,8 @@ Important Dates
 # NOW
 2021-03-10: Test data release; Evaluation start
 
-2021-03-24: Evaluation end
+2021-03-24: Evaluation end :: March 24, 2021, midnight UTC according to codalab
+
 
 2021-04-01: System description paper deadline
 2021-04-13: Deadline for reviews of system description papers
@@ -171,4 +172,27 @@ b69d-9d08-0ad6-3023 : TWICE in UNIT.tsv
 
 https://www.sbert.net/docs/usage/computing_sentence_embeddings.html
 
+
+
+
+
+https://cloud.google.com/ai-platform/deep-learning-vm/docs/cloud-marketplace
+
+asia-southeast1-a
+asia-southeast1-b	Jurong West, Singapore, APAC	E2, N2, N2D, N1, M1, C2	Ivy Bridge, Sandy Bridge, Haswell, Broadwell, Skylake, Cascade Lake, AMD EPYC Rome	GPUs
+asia-southeast1-c	Jurong West, Singapore, APAC	E2, N2, N2D, N1, M1, C2, A2	Ivy Bridge, Sandy Bridge, Haswell, Broadwell, Skylake, Cascade Lake, AMD EPYC Rome	GPUs
+
+... only T4s...
+
+us-west1-a
+16vCPU 60Gb Mem
+1 V100
+
+Want access to V100 or A100 for research purposes : Have already been given Google credits under the GDE program to do so.  
+Based in Singapore, but the instances there only seem to have T4s available : So, expanding search to find a close-ish alternative machine.
+
+Rejected
+
+I wanted a GPU quota increase from 0 to >0.  I am a Google Developer Expert for ML (GDE ML), which is a Google program, and co-organise the TensorFlow group in Singapore with more than 4000 members.  
+I have credits generously granted to me by Google to conduct a research task.  It is mind-boggling to see that GCP is rejecting my request.
 

@@ -364,6 +364,9 @@ def process_expert_gold(expert_preds: List) -> Dict[str, Dict[str, float]]:
 
 
 class Scorer(BaseModel):
+    #@staticmethod
+    #def get_coverage(gold_explanations, score_min, 
+  
     @staticmethod
     def run(path_gold: Path, preds: List[Prediction]) -> float:
         # https://colab.research.google.com/drive/1uexs4-ir0E9dbAsGPbCUJDAhmx0nwRx-?usp=sharing
@@ -372,38 +375,50 @@ class Scorer(BaseModel):
             gold_explanations = process_expert_gold(json.load(f)["rankingProblems"])
         
         #print(f"{path_gold} : {len(gold_explanations)}, {len(preds)}")
-        limit=100
+        score_min_arr = [0,1,2,3,4,5]
+        limit_arr     = [100, 128, 200, 256, 300, 400, 512]
 
-        coverage_by_score=dict()
-        for score_min in range(0, 6):
-          coverage_arr=[]
+        coverage_tot=np.zeros( (len(score_min_arr), len(limit_arr)) )
+        coverage_cnt=coverage_tot.copy()
+        
+        for i, score_min in enumerate(score_min_arr):
           for p in preds:
             k = p.qid
+            
             # Get list of keys in expert ranking in sorted order (if they're worth >0)
             #expert_order = sorted([(v,k) for k,v in gold_explanations[k].items() if v>0.], reverse=True)
             expert_set = set(id for id,v in gold_explanations[k].items() if v>score_min) 
             
             if len(expert_set)==0: continue
-            
-            predicted_uids = p.uids[:limit]
-            coverage_ids=[ u for u in predicted_uids if u in expert_set ]
-            
-            #print(expert_set)
-            #print([u for u in predicted_uids if u not in expert_set])
-            
-            #print(f"Want {len(expert_set)} and found {len(coverage_ids)} in first {len(predicted_uids)} predictions")
-            coverage_arr.append( len(coverage_ids)/len(expert_set) )
-          coverage = sum(coverage_arr)/len(coverage_arr)
-          print(f"{score_min:.1f} : {coverage:.4f}")
-          coverage_by_score[score_min]=coverage
+
+            for j, limit in enumerate(limit_arr):
+              predicted_uids = p.uids[:limit]
+              coverage_ids=[ u for u in predicted_uids if u in expert_set ]
+              
+              #print(expert_set)
+              #print([u for u in predicted_uids if u not in expert_set])
+              
+              #print(f"Want {len(expert_set)} and found {len(coverage_ids)} in first {len(predicted_uids)} predictions")
+              #coverage_arr.append( len(coverage_ids)/len(expert_set) )
+              coverage_tot[i,j] += len(coverage_ids)/len(expert_set)
+              coverage_cnt[i,j] += 1
+              
+          #coverage = sum(coverage_arr)/len(coverage_arr)
+          #print(f"{score_min:.1f} : {coverage:.4f}")
+          #coverage_by_score[score_min]=coverage
         
-        return sum( coverage_by_score.values() )/len(coverage_by_score)
+        coverage_av = coverage_tot/coverage_cnt
+        for i,score_min in enumerate(score_min_arr):
+          print( f"{score_min:4d} : "+(', '.join([f"{coverage_av[i,j]:.4f}" for j,limit in enumerate(limit_arr)])) )
+            
+        #return (coverage_av[:,0]).mean()  # This is the average score for limit=100
+        return (coverage_av[:,2]).mean()  # This is the average score for limit=200
 
 
 def hyperopt(
-    data_split=SplitEnum.dev,
-    #data_split=SplitEnum.train,
-    output_pattern="../predictions/predict.FOLD.baseline-retrieval.txt",
+    #data_split=SplitEnum.dev,
+    data_split=SplitEnum.train,
+    output_pattern="../predictions/predict.FOLD.baseline-retrieval.hyperopt.txt",
 ):
     data = Data(data_split=data_split)
     data.load()
@@ -414,39 +429,47 @@ def hyperopt(
     
     manager = PredictManager(file_pattern=output_pattern)
 
-    "@XXnni.variable(nni.choice(50, 250, 500), name=scale)"
-    
-    """@nni.variable(nni.choice(False, True), name=remove_stopwords)"""
+    """@XXnni.variable(nni.choice(False, True), name=remove_stopwords)"""  # proven by top 20% of scores
     remove_stopwords=True
   
-    """@nni.variable(nni.uniform(1, 4), name=nps_base)"""
+    """@XXnni.variable(nni.uniform(1, 4), name=nps_base)""" 
+    """@XXnni.variable(nni.uniform(1, 2.1), name=nps_base)""" 
+    """@nni.variable(nni.uniform(1.0, 1.2), name=nps_base)"""  # On training set
     nps_base=1.0
   
-    """@nni.variable(nni.uniform(1, 3), name=nps_ratio)"""
-    nps_ratio=2.0
+    """@XXnni.variable(nni.uniform(1, 3), name=nps_ratio)"""
+    """@XXnni.variable(nni.uniform(2, 3), name=nps_ratio)"""
+    """@nni.variable(nni.uniform(2.4, 2.9), name=nps_ratio)"""  # On training set
+    nps_ratio=2.7
   
     nps, nps_arr=nps_base, []
     for _ in range(5):
       nps_arr.append( int(nps) )
       nps*=nps_ratio
     
-    """@nni.variable(nni.uniform(1.1, 1.9), name=scale)"""
-    scale=1.25
+    """@XXnni.variable(nni.uniform(1.1, 1.9), name=scale)"""  # Initial range
+    """@XXnni.variable(nni.uniform(0.7, 1.4), name=scale)"""
+    """@nni.variable(nni.uniform(1.1, 1.2), name=scale)"""  # On training set
+    scale=1.15
     
     ## https://www.elastic.co/blog/practical-bm25-part-3-considerations-for-picking-b-and-k1-in-elasticsearch
-    """@nni.variable(nni.choice(False, True), name=bm25_binary)"""
-    bm25_binary=True
+    """@XXnni.variable(nni.choice(False, True), name=bm25_binary)"""
+    bm25_binary=False  # Changed from original 'True' based on training set
     
-    """@nni.variable(nni.choice(False, True), name=use_idf)"""
+    """@XXnni.variable(nni.choice(False, True), name=use_idf)""" # False proven to be a bad choice
     use_idf=True
     
     # The default values of b = 0.75 and k1 = 1.2 work pretty well for most corpuses, so you’re likely fine with the defaults. 
     #   ... seem to show the optimal b to be in a range of 0.3-0.9
     #   ... show the optimal k1 to be in a range of 0.5-2.0  [k1 is typically evaluated in the 0 to 3 range]
-    """@nni.variable(nni.uniform(0.3, 0.9), name=b)"""
-    b=0.5
-    """@nni.variable(nni.uniform(0.5, 2.5), name=k1)"""
-    k1=2.0
+    """@XXnni.variable(nni.uniform(0.3, 0.9), name=b)"""
+    """@XXnni.variable(nni.uniform(0.3, 0.7), name=b)"""
+    """@nni.variable(nni.uniform(0.5, 0.7), name=b)"""    # On training set
+    b=0.6
+    """@XXnni.variable(nni.uniform(0.5, 2.5), name=k1)"""
+    """@XXnni.variable(nni.uniform(0.5, 2.0), name=k1)"""
+    """@nni.variable(nni.uniform(0.5, 0.75), name=k1)"""   # On training set
+    k1=0.625  # Changed from original 2.0  based on training set
 
     r=  Retriever(
             preproc=SpacyProcessor(remove_stopwords=remove_stopwords),
@@ -455,7 +478,7 @@ def hyperopt(
         ) 
         
     preds = r.run(data)
-    # manager.write(preds, data_split, limit=100)
+    manager.write(preds, data_split, limit=200)
     if data_split != SplitEnum.test:
         #Scorer().run(data.path_gold, manager.make_path(data_split))
         #ResultAnalyzer().run(data, preds)
@@ -482,6 +505,14 @@ Original 'dev' retrieval coverage
 5.0 : 0.9101
 Coverage : 0.7850
 
+   0 : 0.6637, 0.7024, 0.7699, 0.7987, 0.8154, 0.8442, 0.8674
+   1 : 0.6869, 0.7258, 0.7911, 0.8179, 0.8338, 0.8609, 0.8828
+   2 : 0.7528, 0.7893, 0.8439, 0.8643, 0.8761, 0.8956, 0.9129
+   3 : 0.8034, 0.8348, 0.8818, 0.8975, 0.9071, 0.9212, 0.9343
+   4 : 0.9087, 0.9258, 0.9484, 0.9558, 0.9622, 0.9745, 0.9805
+   5 : 0.9210, 0.9351, 0.9516, 0.9584, 0.9658, 0.9769, 0.9849
+Coverage : 0.8645  (equiv to 0.7894 on first column)
+
 Original 'train' retrieval coverage
 0.0 : 0.6637
 1.0 : 0.6873
@@ -490,4 +521,6 @@ Original 'train' retrieval coverage
 4.0 : 0.9037
 5.0 : 0.9260
 Coverage : 0.7895
+
+
 """
