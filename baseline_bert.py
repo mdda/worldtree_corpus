@@ -27,7 +27,7 @@ tokenizer = DistilBertTokenizerFast.from_pretrained("distilbert-base-uncased")
 model.to(device)
 model.train()
 
-train_dataset = QuestionRatingDataset("data/wt-expert-ratings.train.json", tokenizer)
+train_dataset = QuestionRatingDataset("data/wt-expert-ratings.train.json", tokenizer=tokenizer)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
 
 optimizer = AdamW(model.parameters(), lr=5e-5)

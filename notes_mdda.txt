@@ -210,3 +210,11 @@ cd worldtree_corpus  # i.e. the REPO root directory
 git checkout -b textgraphs_2021 origin/textgraphs_2021
 
 ./run_setup.bash
+ln -s ../tg2021task/data-evalperiod/wt-expert-ratings.train.json data/wt-expert-ratings.train.json
+ln -s ../tg2021task/data-evalperiod/wt-expert-ratings.dev.json data/wt-expert-ratings.dev.json
+ln -s ../tg2021task/data-evalperiod/wt-expert-ratings.test.json data/wt-expert-ratings.test.json
+ln -s ../tg2021task/data-evalperiod/tables data/tables
+
+. ./env38/bin/activate
+python baseline_bert.py
+

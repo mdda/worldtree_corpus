@@ -1,3 +1,9 @@
+# virtualenv --system-site-packages -p python3 env38
+# . env38/bin/activate
+# pip install -r requirements.txt
+
+spacy==2.3.2
+
 black==20.8b1
 numpy==1.20.1
 pandas==1.2.3
@@ -8,10 +14,6 @@ scikit-learn==0.24.1
 torch==1.7.1+cu101
 tqdm==4.58.0
 transformers==4.3.3
-
-# virtualenv --system-site-packages -p python3 env38
-# . env38/bin/activate
-# pip install -r requirements.txt
 
 #black==20.8b1
 #numpy==1.20.1

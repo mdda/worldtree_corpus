@@ -19,7 +19,7 @@ VENV=env38
 if [ ! -d "$VENV" ]; then
     virtualenv --system-site-packages ${VENV}
 fi
-. env38/bin/activate
+. ./env38/bin/activate
 
 pip3 install -r requirements.txt
 pip3 install -r ${TASK_REPO}/requirements.txt   # Already included in this repo
