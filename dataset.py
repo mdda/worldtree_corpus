@@ -68,6 +68,7 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
         df["text"] = self.concat_question_explanation(
             df.question_text, df.explanation_text
         )
+        #self.encodings={}
         if tokenizer:
             self.encodings = tokenizer(df.text.tolist(), padding=True, truncation=True)
         self.labels = df.relevance / max(df.relevance)
@@ -109,7 +110,7 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.labels)
 
-    def __getitem__(self, i):
+    def __getitem__(self, i):  # Will fail without a tokeniser
         item = {key: torch.tensor(val[i]) for key, val in self.encodings.items()}
         item["labels"] = torch.tensor(self.labels[i])
         item["classes"] = torch.tensor(self.classes[i])
