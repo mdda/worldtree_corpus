@@ -140,7 +140,7 @@ class TransformerRanker(pl.LightningModule):
             predict_dir = self.trainer.log_dir
         dataset = QuestionRatingDataset("data/wt-expert-ratings.dev.json")
         ge = dataset.gold_predictions
-        ndcg, _ = mean_average_ndcg(ge, preds, 0)
+        ndcg = mean_average_ndcg(ge, preds, 0)
         self.log('ndcg', ndcg)
 
     def test_step(self, batch, batch_idx):
@@ -214,13 +214,10 @@ def cli_main():
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     # data
     exp_dataset = ExplanationDataset("data/tables")
-    train_ret_preds = PredictManager.read("predict.train.baseline-retrieval.hyperopt.txt")
     train_dataset = QuestionRatingDataset(
         "data/wt-expert-ratings.train.json",
         explanation_dataset=exp_dataset,
-        ret_preds=train_ret_preds,
         neg_samples=args.neg_samples,
-        neg_sample_method='random',
         tokenizer=tokenizer,
     )
     val_dataset = QuestionRatingDataset(
