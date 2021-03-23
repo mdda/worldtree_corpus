@@ -46,8 +46,9 @@ def mean_average_ndcg(gold_preds, preds, rating_threshold):
             )
             scores.append(score)
             oracle_scores.append(oracle_score)
-    print(f"ndcg: {np.average(scores)}")
-    print(f"oracle ndcg: {np.average(oracle_scores)}")
+    ndcg_score = np.average(scores)
+    oracle_ndcg_score = np.average(oracle_scores)
+    return ndcg_score, oracle_ndcg_score
 
 
 def ndcg(
