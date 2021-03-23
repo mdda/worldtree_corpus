@@ -234,6 +234,15 @@ tar -xzf predict.both.baseline-retrieval.hyperopt.tar.gz
 popd
 
 python model_mdda.py  # Use defaults - initial download : 440Mb
+# 98% utilisation : 5559Mb of GPU RAM used
+0.0677
+0.0404
+0.0372
+0.0302
+0.0275
+0.0190
+
+
 
 
 

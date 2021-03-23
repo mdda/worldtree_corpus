@@ -172,6 +172,7 @@ def cli_main():
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_labels", type=int, default=1)
     parser.add_argument("--neg_samples", type=int, default=0)
+    parser.add_argument("--load", type=str, default=None)
     args = parser.parse_args()
     if args.num_labels !=1 and args.num_labels != 4:
         raise NotImplementedError("num labels can only either be 1 or 4")
@@ -189,10 +190,12 @@ def cli_main():
         "data/wt-expert-ratings.dev.json", tokenizer=tokenizer
     )
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True
+        train_dataset, batch_size=args.batch_size, shuffle=True,
+        num_workers=4,
     )
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=False
+        val_dataset, batch_size=args.batch_size, shuffle=False,
+        num_workers=4,
     )
 
     # model
@@ -209,13 +212,17 @@ def cli_main():
         #precision=16,
         callbacks=[early_stopping_callback, checkpoint_callback],
     )
-    trainer.fit(model, train_loader, val_loader)
+
+    if args.load is None:
+      trainer.fit(model, train_loader, val_loader)
+    else:
+      model.load_from_checkpoint(args.load)
 
     # ------------
     # testing
     # ------------
     pred_dataset = PredictDataset(
-        "predictions/predict.dev.baseline-retrieval.txt", tokenizer, val_dataset, exp_dataset
+        "predictions/predict.dev.baseline-retrieval.hyperopt.txt", tokenizer, val_dataset, exp_dataset
     )
     pred_dataloader = torch.utils.data.DataLoader(
         pred_dataset, batch_size=args.batch_size, shuffle=False
