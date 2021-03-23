@@ -245,8 +245,8 @@ def cli_main():
     # ------------
     # training
     # ------------
-    early_stopping_callback = pl.callbacks.EarlyStopping(monitor="ndcg", patience=2)
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="ndcg", verbose=True)
+    early_stopping_callback = pl.callbacks.EarlyStopping(monitor="ndcg", mode='max', patience=2)
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="ndcg", mode='max', verbose=True)
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=[early_stopping_callback, checkpoint_callback]
     )
