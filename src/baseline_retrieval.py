@@ -34,9 +34,12 @@ from vectorizers import BM25Vectorizer, TruncatedSVDVectorizer
 
 class Data(BaseModel):
     root: str = "../data"
+
     #root_gold: str = "../tg2020task"
-    #root_gold: str = "../tg2021task/data-evalperiod"
-    root_gold: str = "/mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/tg2021task/data-evalperiod"
+    root_gold: str = "../tg2021task/data-evalperiod"
+    ## During hyperparam optimisation
+    #root_gold: str = "/mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/tg2021task/data-evalperiod"
+
     data_split: SplitEnum = SplitEnum.dev
     statements: Optional[List[Statement]]
     questions: Optional[List[QuestionAnswer]]
@@ -416,8 +419,9 @@ class Scorer(BaseModel):
 
 
 def hyperopt(
-    #data_split=SplitEnum.dev,
-    data_split=SplitEnum.train,
+    #data_split=SplitEnum.train,
+    data_split=SplitEnum.dev,
+    #data_split=SplitEnum.test,
     output_pattern="../predictions/predict.FOLD.baseline-retrieval.hyperopt.txt",
 ):
     data = Data(data_split=data_split)

@@ -18,10 +18,16 @@ import spacy
 nlp = spacy.load("en_core_web_sm", disable=["ner", "deps"])  # "tagger", "parser", 
 
 #TASK_BASE = '../tg2020task'
-#TASK_BASE = '../tg2021task/data-evalperiod'
-TASK_BASE = '/mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/tg2021task/data-evalperiod'
-#RDAI_BASE = '../data/'
-RDAI_BASE = '/mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/data/'
+TASK_BASE = '../tg2021task/data-evalperiod'
+RDAI_BASE = '../data/'
+
+## During hyperparam optimisation
+# on square
+#TASK_BASE = '/mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/tg2021task/data-evalperiod'
+#RDAI_BASE = '/mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/data/'
+# on simlim
+#TASK_BASE = '/mnt/data/secure/mdda/rdai/worldtree_corpus/tg2021task/data-evalperiod'
+#RDAI_BASE = '/mnt/data/secure/mdda/rdai/worldtree_corpus/data/'
 
 
 # Type-definitions
@@ -796,9 +802,9 @@ if '__main__' == __name__:
     # Parsing QuestionAnswers requires:
     #   ?? keywords (via keyword_counts) : for simple string matching
 
-    #qanda_train = load_qanda('train')#, regenerate=True) # 1.8MB
-    #qanda_dev   = load_qanda('dev')#, regenerate=True)   # 400k in 496 lines
-    #qanda_test  = load_qanda('test')#, regenerate=True)  # 800k
+    qanda_train = load_qanda('train') #, regenerate=True) # 1.8MB
+    qanda_dev   = load_qanda('dev')   #, regenerate=True)   # 400k in 496 lines
+    qanda_test  = load_qanda('test')  #, regenerate=True)  # 800k
     
     if False:
         for i in [411]:  # Good examples : 

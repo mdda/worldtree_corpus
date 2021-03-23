@@ -22,7 +22,7 @@ def error_analysis(gold_preds, preds, pred_logits, dataset, exp_dataset, rating_
                 relevance = gold_preds[qid][eid] if eid in gold_preds[qid] else 0
                 print(f"  {eid} {float(pred_logits[qid][eid]):.2f} {relevance}  {exp_dataset.get_explanation(eid)}")
 
-def mean_average_ndcg(gold_preds, preds, rating_threshold):
+def mean_average_ndcg(gold_preds, preds, rating_threshold, oracle=True):
     scores = []
     oracle_scores = []
     # joblib this
@@ -31,24 +31,27 @@ def mean_average_ndcg(gold_preds, preds, rating_threshold):
             delayed(ndcg)(gold_preds[pred.qid], pred.eids, rating_threshold)
             for pred in tqdm(preds, desc="ndcg")
         )
-        oracle_scores = Parallel(n_jobs=12)(
-            delayed(ndcg)(
-                gold_preds[pred.qid], pred.eids, rating_threshold, oracle=True
+        if oracle:
+            oracle_scores = Parallel(n_jobs=12)(
+                delayed(ndcg)(
+                    gold_preds[pred.qid], pred.eids, rating_threshold, oracle=True
+                )
+                for pred in tqdm(preds, desc="oracle ndcg")
             )
-            for pred in tqdm(preds, desc="oracle ndcg")
-        )
     else:
         for pred in tqdm(preds):
             qid = pred.qid
             score = ndcg(gold_preds[qid], pred.eids, rating_threshold)
-            oracle_score = ndcg(
-                gold_preds[qid], pred.eids, rating_threshold, oracle=True
-            )
             scores.append(score)
-            oracle_scores.append(oracle_score)
-    ndcg_score = np.average(scores)
-    oracle_ndcg_score = np.average(oracle_scores)
-    return ndcg_score, oracle_ndcg_score
+            if oracle:
+                oracle_score = ndcg(
+                    gold_preds[qid], pred.eids, rating_threshold, oracle=True
+                )
+                oracle_scores.append(oracle_score)
+    print(f"prediction ndcg: {np.average(scores):.4f}")
+    if oracle:
+        print(f"oracle ndcg    : {np.average(oracle_scores):.4f}")
+    return np.average(scores)
 
 
 def ndcg(

@@ -234,7 +234,7 @@ tar -xzf predict.both.baseline-retrieval.hyperopt.tar.gz
 popd
 
 python model_mdda.py  # Use defaults - initial download : 440Mb
-# 98% utilisation : 5559Mb of GPU RAM used
+# 98% utilisation : 5559Mb of GPU RAM used, each epoch ~20mins
 0.0677
 0.0404
 0.0372
@@ -242,8 +242,87 @@ python model_mdda.py  # Use defaults - initial download : 440Mb
 0.0275
 0.0190
 
+python model_mdda.py --load lightning_logs/version_2/checkpoints/epoch=3-step=15659.ckpt
+# Takes ~8mins on validation set
+ndcg:        0.7409
+oracle ndcg: 0.9378
+# Still works(!)
+# Still works(!) at 00:27 of 2021-03-24  !! Awesome
 
 
+#Vivek recollection: DistilBERT:  0.72
+#Vivek recollection: RegularBERT: 0.73
+
+python model_mdda.py --bert distilbert-base-uncased
+# 99% utilisation : 3475Mb of GPU RAM used, each epoch ~12mins
+prediction ndcg: 0.7073
+oracle ndcg    : 0.9378
+
+python model_mdda.py --bert distilbert-base-uncased --load lightning_logs/version_7/checkpoints/epoch=0-step=3914.ckpt
+prediction ndcg: 0.6790  # Have to add in as model param
+oracle ndcg    : 0.9378
+
+# Test hparam saving
+python model_mdda.py --bert distilbert-base-uncased
+python model_mdda.py --load lightning_logs/version_9/checkpoints/epoch=0-step=3914.ckpt
+prediction ndcg: 0.6790  # Hmm - same
+oracle ndcg    : 0.9378
+
+# Test hparam saving
+python model_mdda.py --bert distilbert-base-uncased
+prediction ndcg: 0.7152 # At end of training
+oracle ndcg    : 0.9378
+python model_mdda.py --load lightning_logs/version_13/checkpoints/epoch=1-step=7829.ckpt
+prediction ndcg: 0.6985 # Saved model ??
+oracle ndcg    : 0.9378
 
 
+# Big training with ndcg calculated continuously too
+python model_mdda.py --loss_style 2 --num_labels 7 --bert distilbert-base-uncased 
+
+python model_mdda.py --loss_style 2 --num_labels 7
+prediction ndcg: 0.6431  # before training?
+prediction ndcg: 0.8236  # loss.train=1.02
+prediction ndcg: 0.8525  # loss.train=0.825
+prediction ndcg: 0.8589  # loss.train=0.752
+prediction ndcg: 0.8516  # loss.train=0.596
+prediction ndcg: 0.8653  # loss.train=0.593
+prediction ndcg: 0.7131 (dev retrieval)
+
+python model_mdda.py --loss_style 2 --num_labels 7 --load lightning_logs/version_20/checkpoints/epoch=4-step=19574.ckpt
+prediction ndcg: 0.7131  # As expected (disappointingly)
+oracle ndcg    : 0.9378
+
+python model_mdda.py --loss_style 2 --num_labels 7 --load lightning_logs/version_20/checkpoints/epoch=4-step=19574.ckpt --fold test
+
+
+# Try again with explicit model specification
+python model_mdda.py --loss_style 2 --num_labels 7 --base distilbert
+0.5796  # Before training
+0.8278  # loss=1.02
+0.8250  # loss=0.84
+0.8411  # loss=0.709
+0.8464  # loss=0.663
+0.8486  # loss=0.428
+0.6783 / 0.9378  # Final test
+
+python model_mdda.py --load lightning_logs/version_24/checkpoints/epoch=4-step=19574.ckpt
+0.6783 / 0.9378  # Final test matches perfectly...
+0.6783 / 0.9378  # Final test matches perfectly...  And also with a different seed == good confirmation
+
+
+# Older checkpoint still works (this is pure regression-style)
+python model_mdda.py --load lightning_logs/version_2/checkpoints/epoch=3-step=15659.ckpt
+prediction ndcg: 0.7409
+oracle ndcg    : 0.9378
+
+
+# Try again with explicit model specification
+python model_mdda.py --loss_style 2 --num_labels 7 --base bert
+
+
+git fetch origin textgraphs_2021
+From https://github.com/mdda/worldtree_corpus
+ * branch            textgraphs_2021 -> FETCH_HEAD
+git diff FETCH_HEAD
 
