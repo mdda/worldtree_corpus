@@ -11,7 +11,8 @@ from retriever import PredictManager
 
 
 class QuestionRatingDataset(torch.utils.data.Dataset):
-    def __init__(self, path, explanation_dataset=None, neg_samples=0, tokenizer=None):
+    def __init__(self, path, explanation_dataset=None, ret_preds=None,
+                 neg_samples=0, neg_sample_method='preds', tokenizer=None):
         with open(path, "rb") as f:
             questions_file = json.load(f)
         question_ratings = []
@@ -40,28 +41,49 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
                 )
                 cur_exp_ids.append(explanation_id)
             if neg_samples > 0:
-                assert explanation_dataset is not None
-                exp_df = explanation_dataset.explanations
-                len_exp = len(exp_df)
-                rand_indexes = [
-                    random.randrange(0, len_exp) for i in range(neg_samples)
-                ]
-                exp_samples = exp_df.iloc[rand_indexes]
-                for i, exp in exp_samples.iterrows():
-                    if i in cur_exp_ids:
-                        continue
-                    question_ratings.append(
-                        {
-                            "question_id": question_id,
-                            "question_text": question_text,
-                            "explanation_id": i,
-                            "explanation_text": exp.explanation_text,
-                            "relevance": 0,
-                            "is_gold": "0",
-                            "gold_role": "",
-                        }
-                    )
-                    cur_exp_ids.append(i)
+                if neg_sample_method == 'random':
+                    assert explanation_dataset is not None
+                    exp_df = explanation_dataset.explanations
+                    len_exp = len(exp_df)
+                    rand_indexes = [
+                        random.randrange(0, len_exp) for i in range(neg_samples)
+                    ]
+                    exp_samples = exp_df.iloc[rand_indexes]
+                    for i, exp in exp_samples.iterrows():
+                        if i in cur_exp_ids:
+                            continue
+                        question_ratings.append(
+                            {
+                                "question_id": question_id,
+                                "question_text": question_text,
+                                "explanation_id": i,
+                                "explanation_text": exp.explanation_text,
+                                "relevance": 0,
+                                "is_gold": "0",
+                                "gold_role": "",
+                            }
+                        )
+                        cur_exp_ids.append(i)
+                elif neg_sample_method == 'preds':
+                    assert explanation_dataset is not None
+                    assert ret_preds is not None
+                    qid_ret_preds = {x.qid:x for x in ret_preds}
+                    eids = [x for x in qid_ret_preds[question_id].eids if x not in cur_exp_ids]
+                    for i in eids[:neg_samples]:
+                        question_ratings.append(
+                            {
+                                "question_id": question_id,
+                                "question_text": question_text,
+                                "explanation_id": i,
+                                "explanation_text": explanation_dataset.get_explanation(i),
+                                "relevance": 0,
+                                "is_gold": "0",
+                                "gold_role": "",
+                            }
+                        )
+                        cur_exp_ids.append(i)
+                else:
+                    raise NotImplementedError(f"")
 
         print(len(question_ratings))
         df = pd.DataFrame(question_ratings)

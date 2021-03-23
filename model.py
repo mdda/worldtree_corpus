@@ -179,10 +179,13 @@ def cli_main():
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     # data
     exp_dataset = ExplanationDataset("data/tables")
+    train_ret_preds = PredictManager.read("predict.train.baseline-retrieval.hyperopt.txt")
     train_dataset = QuestionRatingDataset(
         "data/wt-expert-ratings.train.json",
         explanation_dataset=exp_dataset,
+        ret_preds=train_ret_preds,
         neg_samples=args.neg_samples,
+        neg_sample_method='random',
         tokenizer=tokenizer,
     )
     val_dataset = QuestionRatingDataset(
