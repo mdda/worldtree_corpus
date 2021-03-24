@@ -185,10 +185,10 @@ class TransformerRanker(pl.LightningModule):
             predict_dir = ""
         else:
             predict_dir = self.trainer.log_dir
-        with open(os.path.join(predict_dir, "logits.test.model.pkl"), "wb") as f:
+        with open(os.path.join(predict_dir, f"logits.{self.fold_testing}.model.pkl"), "wb") as f:
             pickle.dump(pred_logits, f, pickle.HIGHEST_PROTOCOL)
 
-        PredictManager.write(os.path.join(predict_dir, "predict.test.model.txt"), preds)
+        PredictManager.write(os.path.join(predict_dir, f"predict.{self.fold_testing}.model.txt"), preds)
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.learning_rate)
@@ -206,6 +206,7 @@ def cli_main():
     parser.add_argument("--neg_samples", type=int, default=0)
     parser.add_argument("--base", type=str, default="bert-base-uncased")
     parser.add_argument("--load", type=str, default=None)
+    parser.add_argument("--fold", type=str, default='val')
     args = parser.parse_args()
     if args.num_labels !=1 and args.num_labels != 4:
         raise NotImplementedError("num labels can only either be 1 or 4")
@@ -257,7 +258,11 @@ def cli_main():
         pred_test_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=8
     )
-    trainer.test(model, test_dataloaders=pred_test_dataloader)
+    model.fold_testing = args.fold
+    if args.fold == 'val':
+        trainer.test(model, test_dataloaders=pred_dataloader)
+    elif args.fold == 'test':
+        trainer.test(model, test_dataloaders=pred_test_dataloader)
 
 if __name__ == "__main__":
     cli_main()
