@@ -185,13 +185,10 @@ class TransformerRanker(pl.LightningModule):
             predict_dir = ""
         else:
             predict_dir = self.trainer.log_dir
-        dataset = QuestionRatingDataset("data/wt-expert-ratings.dev.json")
-        ge = dataset.gold_predictions
-        mean_average_ndcg(ge, preds, 0)
-        with open(os.path.join(predict_dir, "logits.dev.model.pkl"), "wb") as f:
+        with open(os.path.join(predict_dir, "logits.test.model.pkl"), "wb") as f:
             pickle.dump(pred_logits, f, pickle.HIGHEST_PROTOCOL)
 
-        PredictManager.write(os.path.join(predict_dir, "predict.dev.model.txt"), preds)
+        PredictManager.write(os.path.join(predict_dir, "predict.test.model.txt"), preds)
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.learning_rate)
