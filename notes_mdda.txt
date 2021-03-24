@@ -34,25 +34,11 @@ To encourage transparency and replicability, all teams must publish their :
 
 ## Scores
 
-(2020-09-02)
-  Username    Score   
-1	alvysinger  0.5815
-2	webbley     0.5809
-3	aisys       0.5233
+1 DeepBlueAI 11	03/23/21	DeepBlueAI	  0.7285  (later)
+1 yuejiaxiang	1	03/19/21	google-BERT		0.7003
+2 iiacobac		4	03/12/21	huawei_noah		0.6493
+3 dustalov		2	03/10/21					      0.5010
 
-(2020-09-19)
-  Username    Score   
-1	webbley     0.5831 (increased)
-2	alvysinger  0.5815 (same)
-3	aisys       0.5233 (same)
-
-(2020-09-21)
-#	Username	Score
-1	webbley     0.6033 (increased)
-2	alvysinger  0.5815 (same)
-3	aisys       0.5233 (same)
-
-6	redken	3	09/21/20		0.4793 (5)
 
 
 
@@ -96,15 +82,24 @@ git checkout -b textgraphs_2021 origin/textgraphs_2021
 ./baseline_tfidf.py data-evalperiod/tables data-evalperiod/wt-expert-ratings.test.json > predict.baseline_tfidf.test.txt
 #./evaluate.py --gold data-evalperiod/wt-expert-ratings.test.json predict.baseline_tfidf.test.txt
 # Guess at site evaluation on test set : 0.5010 (dustalov)
-#   THEREFORE : The expected_test_score = train_score-0.0160
-#   THEREFORE : The expected_test_score =   dev_score-0.0120
+#   THEREFORE : The expected_test_score = train_score-0.0160 (don't rely on this)
+#   THEREFORE : The expected_test_score =   dev_score-0.0120 (could be decent estimate)
 
 
 
 cd ../src
 python baseline_retrieval.py  # Saves to ../predictions/predict.dev.baseline-retrieval.txt
 
+# Basic retrieval (before hyperopt)
+cd ../tg2021task/
+./evaluate.py --gold data-evalperiod/wt-expert-ratings.dev.json ../predictions/predict.dev.baseline-retrieval.txt
+Mean NDCG Score : 0.6669
 
+
+# After hyperopt
+cd ../tg2021task/
+./evaluate.py --gold data-evalperiod/wt-expert-ratings.dev.json ../predictions/predict.dev.baseline-retrieval.txt
+Mean NDCG Score : 0.6785199870115878
 
 
 python3 -m pip install --upgrade nni
@@ -277,17 +272,18 @@ prediction ndcg: 0.6985 # Saved model ??
 oracle ndcg    : 0.9378
 
 
-# Big training with ndcg calculated continuously too
-python model_mdda.py --loss_style 2 --num_labels 7 --bert distilbert-base-uncased 
 
-python model_mdda.py --loss_style 2 --num_labels 7
-prediction ndcg: 0.6431  # before training?
-prediction ndcg: 0.8236  # loss.train=1.02
-prediction ndcg: 0.8525  # loss.train=0.825
-prediction ndcg: 0.8589  # loss.train=0.752
-prediction ndcg: 0.8516  # loss.train=0.596
-prediction ndcg: 0.8653  # loss.train=0.593
-prediction ndcg: 0.7131 (dev retrieval)
+# Big training with ndcg calculated continuously too
+#python model_mdda.py --loss_style 2 --num_labels 7 --bert distilbert-base-uncased 
+#
+#python model_mdda.py --loss_style 2 --num_labels 7
+#prediction ndcg: 0.6431  # before training?
+#prediction ndcg: 0.8236  # loss.train=1.02
+#prediction ndcg: 0.8525  # loss.train=0.825
+#prediction ndcg: 0.8589  # loss.train=0.752
+#prediction ndcg: 0.8516  # loss.train=0.596
+#prediction ndcg: 0.8653  # loss.train=0.593
+#prediction ndcg: 0.7131 (dev retrieval)
 
 python model_mdda.py --loss_style 2 --num_labels 7 --load lightning_logs/version_20/checkpoints/epoch=4-step=19574.ckpt
 prediction ndcg: 0.7131  # As expected (disappointingly)
@@ -317,12 +313,67 @@ prediction ndcg: 0.7409
 oracle ndcg    : 0.9378
 
 
-# Try again with explicit model specification
-python model_mdda.py --loss_style 2 --num_labels 7 --base bert
-
-
 git fetch origin textgraphs_2021
 From https://github.com/mdda/worldtree_corpus
  * branch            textgraphs_2021 -> FETCH_HEAD
 git diff FETCH_HEAD
 
+
+# Try again with explicit model specification (version_28)
+python model_mdda.py --loss_style 2 --num_labels 7 --base bert
+0.7489
+0.7826 # loss=0.957
+0.8499 # loss=0.908
+0.8466 # loss=0.715
+0.8553 # loss=0.623
+0.8486 # loss=0.606
+0.6969 # !! Final
+
+# Fix hurdle to 0.5 on torch.sigmoid of prob_logit (previous, no sigmoid == bug)
+#python model_mdda.py --load lightning_logs/version_28/checkpoints/epoch=3-step=15659.ckpt
+#oracle ndcg    : 0.9378
+#prediction ndcg: 0. hurdle=0.25
+#prediction ndcg: 0.7075 hurdle=0.50
+
+
+
+# Scores for submissions:
+predict.dev.baseline-retrieval.hyperopt.txt:  	0.6785199870115878
+predict.dev.modelversion9.txt:                  0.76796  
+
+predict.test.baseline-retrieval.hyperopt.txt:  	0.658327  (#i.e dev-2.0)
+predict.test.modelversion9.txt:                 0.75806   (#i.e dev-1.0)
+
+
+
+### ARGH : loss_style was not being stored...
+# Try again :
+python model_mdda.py --loss_style 2 --num_labels 7 --base distilbert
+python model_mdda.py --load lightning_logs/version_42/checkpoints/epoch\=2-step\=11744.ckpt 
+
+
+
+
+"""
+torch.nn.Softmax(-1)( torch.tensor([1.,2,3,5,6]) )
+
+torch.nn.CrossEntropyLoss(
+                                weight=self.output_weight, 
+                                reduce=False,
+                            )
+
+torch.nn.CrossEntropyLoss()( torch.tensor([1.,2,3,5,6]).unsqueeze(0), torch.tensor([3]) )
+weight=torch.tensor([0.,1,1,1,1,1])
+torch.nn.CrossEntropyLoss(weight=weight)( torch.tensor([0., 1,2,3,5,6]).unsqueeze(0), torch.tensor([4]) )
+
+torch.nn.CrossEntropyLoss(ignore_index=0)( torch.tensor([0.,1.,2,3,5,6]).unsqueeze(0), torch.tensor([3]) )
+# == tensor(3.3682)
+torch.nn.CrossEntropyLoss(ignore_index=-1)( torch.tensor([0.,1.,2,3,5,6]).unsqueeze(0), torch.tensor([-1]) )
+# == 0
+
+# Figure out what a uniform prior 'costs'
+torch.nn.CrossEntropyLoss(ignore_index=-1)( torch.tensor([1.,1.,1,1,1,1]).unsqueeze(0), torch.tensor([3]) )
+# tensor(1.7918)
+torch.nn.CrossEntropyLoss(ignore_index=-1)( torch.tensor([0.,0,0,0,0,0]).unsqueeze(0), torch.tensor([-1]) )
+# ==0
+"""

@@ -77,21 +77,23 @@ class TransformerRanker(pl.LightningModule):
         if base=='distilbert':
             self.transformer = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased",
                 num_labels=self.num_labels)
-        print(f"TransformerFromInitialised : {base}")
+        if self.transformer is None:
+            print(f"TransformerFromInitialised FAILURE : {base}")
 
         self.fold_testing='dev'  # The default
         self.loss_style=loss_style
 
         if self.loss_style!=1:
-            self.sigmoid = torch.sigmoid()
-            self.sm = torch.nn.Softmax(self.num_labels-1)
-            self.output_weight = torch.Parameter(
-                torch.Tensor([0., 1., 1., 1., 1., 1., 1.,]), 
-                requires_grad=False,
-            )
+            self.sigmoid = torch.sigmoid
+            self.sm = torch.nn.Softmax(dim=-1)
+            #self.output_weight = torch.nn.Parameter(
+            #    torch.Tensor([0., 1., 1., 1., 1., 1., 1.,]), 
+            #    requires_grad=False,
+            #)
             self.cc_loss = torch.nn.CrossEntropyLoss(
-                                weight=self.output_weight, 
+                                #weight=self.output_weight, 
                                 reduce=False,
+                                ignore_index=-1,
                             )
 
     def freeze_transformer(
@@ -139,20 +141,25 @@ class TransformerRanker(pl.LightningModule):
         )
 
         target_relevance = relevance
-        target_weight = relevance[:]>0
+        target_weight = (relevance[:]>0).to(torch.float32)
 
-        output_relevance = output.logits[:,0]
-        output_dist = output.logits # Includes relevance[0], which is eliminated by 'weight' above
+        output_relevance = outputs.logits[:,0]
+        #output_dist      = outputs.logits # Includes relevance[:,0], which is eliminated by 'weight' above
+        output_dist      = outputs.logits[:,1:]
 
         loss_relevance = torch.nn.functional.binary_cross_entropy_with_logits(
-            output_relevance, relevance[:]<1
+            output_relevance, target_weight
         )
-        loss_dist = (target_weight*self.cc_loss(output_dist, target_relevance)).mean()
+        #loss_dist = (target_weight*self.cc_loss(output_dist, target_relevance)).mean()
+        loss_dist = (
+            target_weight     *self.cc_loss(output_dist, target_relevance-1)
+            #torch.nn.CrossEntropyLoss(ignore_index=-1)( torch.tensor([0.,0,0,0,0,0]).unsqueeze(0), torch.tensor([-1]) )
+            #+(1.-target_weight)*1.7918 # This is the 'uniform prior' 
+            # No need : This is switched based on targets, not the output choice
+        ).mean()
 
-        loss = loss_dist + loss_relevance
+        loss = loss_relevance + loss_dist
         return loss
-
-
 
     def training_step(self, batch, batch_idx):
         loss = self.loss(batch)
@@ -185,6 +192,7 @@ class TransformerRanker(pl.LightningModule):
         }
 
     def get_preds(self, outs):
+        print(f"{self.loss_style=}")
         if self.loss_style==1:  # This is the default 'vivek' way
             return self.get_preds_regular(outs)
         # else
@@ -215,24 +223,40 @@ class TransformerRanker(pl.LightningModule):
 
     def get_preds_switching(self, outs, deterministic=True):
         preds, pred_logits = [], self.get_pred_logits(outs)
+        self.hurdle=0.5
+        #self.hurdle=0.25
 
+        sorter=None
         if deterministic:
             # For all the logits, assume that those >0.5 are 'on'
             #   And use the distributions as above
             #     Sort by (in vs out), then best guess, then magnitude of that guess
-            sorter = lambda i: (int( i[1]*2 ), torch.argmax(i[2]), torch.max(i[2]))  
+            sorter = lambda i: (int( i[1]>self.hurdle ), torch.argmax(i[2]), torch.max(i[2]))  
 
         for question_id, explanation_logits in pred_logits.items():
-            explanations = [ (k, v[0], self.sm(v[1:]))  # key, relevance_prob, relevance_dist
+            # key, relevance_prob, relevance_dist
+            explanations = [ (k, self.sigmoid(v[0]), self.sm( v[1:] ))  
                 for k, v in explanation_logits.items() ]
+            
+            #for e in explanations[::40]: # 5 entries each
+            for e in explanations[::40]: # 5 entries each
+                #   EARLY #('2a54-5bc0-92f5-2816', tensor(0.4961, device='cuda:0'), tensor([0.1379, 0.1735, 0.1838, 0.1733, 0.1752, 0.1563], device='cuda:0'))
+                #   LATER #('5003-5988-8e84-ea8d', tensor(0.9974, device='cuda:0'), tensor([0.0016, 0.0169, 0.0998, 0.8352, 0.0380, 0.0084], device='cuda:0'))
+                # version_42 : examples of distribution idea
+                # f992-5698-76aa-c6de : 0.1424 [0.3784, 0.3788, 0.0781, 0.1283, 0.0143, 0.0220]
+                # 20e2-689d-b7c6-528a : 0.9689 [0.2940, 0.4254, 0.2266, 0.0511, 0.0024, 0.0005]
+                # b429-cf83-df90-a688 : 0.9995 [0.0009, 0.0028, 0.0065, 0.0047, 0.0110, 0.9740]
+                # unfortunately, score is poor...
+                s = ', '.join(f'{v:.4f}' for v in e[2])
+                print(f"{e[0]} : {e[1].item():.4f} [{s}]")
 
             if deterministic:
                 # See above for elegant sorter
-                eids = [ k for k, v_prob, v_dist in sorted( explanation_logits.items(),
+                eids = [ k for k, v_prob, v_dist in sorted( explanations,
                                             key=sorter, reverse=True, ) ]
-                preds.append(Prediction(qid=question_id, eids=eids))
 
             preds.append(Prediction(qid=question_id, eids=eids))
+            
         return preds, pred_logits
 
     def test_epoch_end(self, outs):
@@ -317,7 +341,10 @@ def cli_main():
     )
 
     if args.load is None:
-        model = TransformerRanker(num_labels=args.num_labels, base=args.base)
+        model = TransformerRanker(num_labels=args.num_labels, 
+                                    base=args.base,
+                                    loss_style=args.loss_style,
+                                 )
         # ------------
         # training
         # ------------
