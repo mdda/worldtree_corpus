@@ -51,12 +51,12 @@ class BatchNorm1dFlat(nn.BatchNorm1d):
 
 
 class TransformerRanker(pl.LightningModule):
-    def __init__(self, learning_rate=5e-5, num_labels=1):
+    def __init__(self, num_labels, base, learning_rate=5e-5):
         super().__init__()
         self.learning_rate = learning_rate
         self.num_labels = num_labels
         self.transformer = AutoModelForSequenceClassification.from_pretrained(
-            "bert-base-uncased", num_labels=self.num_labels
+            base, num_labels=self.num_labels
         )
 
     def freeze_transformer(
@@ -204,11 +204,12 @@ def cli_main():
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_labels", type=int, default=1)
     parser.add_argument("--neg_samples", type=int, default=0)
+    parser.add_argument("--base", type=str, default="bert-base-uncased")
     args = parser.parse_args()
     if args.num_labels !=1 and args.num_labels != 4:
         raise NotImplementedError("num labels can only either be 1 or 4")
 
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    tokenizer = AutoTokenizer.from_pretrained(args.base)
     # data
     exp_dataset = ExplanationDataset("data/tables")
     train_dataset = QuestionRatingDataset(
@@ -234,7 +235,7 @@ def cli_main():
     )
 
     # model
-    model = TransformerRanker(num_labels=args.num_labels)
+    model = TransformerRanker(num_labels=args.num_labels, base=args.base)
 
     # ------------
     # training
