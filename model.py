@@ -51,7 +51,7 @@ class BatchNorm1dFlat(nn.BatchNorm1d):
 
 
 class TransformerRanker(pl.LightningModule):
-    def __init__(self, num_labels, base, learning_rate=5e-5):
+    def __init__(self, num_labels=1, base='bert-base-uncased', learning_rate=5e-5):
         super().__init__()
         self.learning_rate = learning_rate
         self.num_labels = num_labels
@@ -245,7 +245,7 @@ def cli_main():
         trainer.fit(model, train_loader, pred_dataloader)
         model = TransformerRanker.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
     else:
-        model = TransformerRanker.load_from_checkpoint("lightning_logs/version_8/checkpoints/epoch=3-step=7831.ckpt")
+        model = TransformerRanker.load_from_checkpoint(args.load)
 
     test_dataset = QuestionRatingDataset(
         "data/wt-expert-ratings.test.json", tokenizer=tokenizer
