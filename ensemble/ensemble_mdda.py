@@ -79,15 +79,17 @@ def hyperopt(
     p1 = read_preds(13, fold)
     p2 = read_preds(14, fold)
     p3 = read_preds(15, fold)
+    p4 = read_preds(7, fold)
 
     """@nni.variable(nni.uniform(0.1, 4.0), name=p0_top)"""
-    p0_top=2.5
+    p0_top=1.0
     """@nni.variable(nni.uniform(0.1, 4.0), name=p1_top)"""
-    p1_top=1.5
+    p1_top=1.0
     """@nni.variable(nni.uniform(0.1, 4.0), name=p2_top)"""
     p2_top=1.0
     """@nni.variable(nni.uniform(0.1, 4.0), name=p3_top)"""
-    p3_top=3.5
+    p3_top=1.0
+    p4_top=1.0
 
     """@XXnni.variable(nni.uniform(0.0, 1.0), name=p0_base)"""
     p0_base=0.0
@@ -97,12 +99,14 @@ def hyperopt(
     p2_base=0.0
     """@XXnni.variable(nni.uniform(0.0, 1.0), name=p3_base)"""
     p3_base=0.0
+    p4_base=0.0
 
     pred_ens = make_preds([
       [p0, p0_top, p0_base],
       [p1, p1_top, p1_base],
       [p2, p2_top, p2_base],
       [p3, p3_top, p3_base],
+      [p4, p4_top, p4_base],
     ])
 
     if save_file:
