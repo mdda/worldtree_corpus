@@ -90,6 +90,7 @@ git checkout -b textgraphs_2021 origin/textgraphs_2021
 cd ../src
 python baseline_retrieval.py  # Saves to ../predictions/predict.dev.baseline-retrieval.txt
 
+
 # Basic retrieval (before hyperopt)
 cd ../tg2021task/
 ./evaluate.py --gold data-evalperiod/wt-expert-ratings.dev.json ../predictions/predict.dev.baseline-retrieval.txt
@@ -153,12 +154,6 @@ GRAPH CONVOLUTIONAL NETWORKS
     https://tkipf.github.io/graph-convolutional-networks/
 
 
-CUDA=cu102
-pip install torch-scatter==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.6.0.html
-pip install torch-sparse==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.6.0.html
-pip install torch-cluster==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.6.0.html
-pip install torch-spline-conv==latest+${CUDA} -f https://pytorch-geometric.com/whl/torch-1.6.0.html
-pip install torch-geometric
 
 5095-dfd3-1847-a4a0 : TWICE in RELATIONSHIP.tsv
 9b87-dd15-0cc5-32aa : TWICE in OPPOSITES.tsv
@@ -206,8 +201,8 @@ git checkout -b textgraphs_2021 origin/textgraphs_2021
 
 ./run_setup.bash
 ln -s ../tg2021task/data-evalperiod/wt-expert-ratings.train.json data/wt-expert-ratings.train.json
-ln -s ../tg2021task/data-evalperiod/wt-expert-ratings.dev.json data/wt-expert-ratings.dev.json
-ln -s ../tg2021task/data-evalperiod/wt-expert-ratings.test.json data/wt-expert-ratings.test.json
+ln -s ../tg2021task/data-evalperiod/wt-expert-ratings.dev.json   data/wt-expert-ratings.dev.json
+ln -s ../tg2021task/data-evalperiod/wt-expert-ratings.test.json  data/wt-expert-ratings.test.json
 ln -s ../tg2021task/data-evalperiod/tables data/tables
 
 . ./env38/bin/activate

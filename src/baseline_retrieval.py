@@ -2,12 +2,14 @@ import json
 import pickle
 import sys
 import time
+
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
+
 from fire import Fire
 from pydantic import BaseModel
 from sklearn.feature_extraction.text import TfidfVectorizer

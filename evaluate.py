@@ -26,7 +26,7 @@ def mean_average_ndcg(gold_preds, preds, rating_threshold, oracle=True):
     scores = []
     oracle_scores = []
     # joblib this
-    if True:
+    if False: # Might interfere with nni
         scores = Parallel(n_jobs=12)(
             delayed(ndcg)(gold_preds[pred.qid], pred.eids, rating_threshold)
             for pred in tqdm(preds, desc="ndcg")

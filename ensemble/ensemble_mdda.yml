@@ -1,0 +1,27 @@
+# nnictl create --config ensemble_mdda.yml
+# nnictl stop
+
+authorName: default
+experimentName: ensemble_mdda
+trialConcurrency: 8
+maxExecDuration: 12m
+#maxExecDuration: 6h
+#maxTrialNum: 10
+
+#choice: local, remote, pai
+trainingServicePlatform: local
+
+#choice: true, false
+useAnnotation: true
+
+tuner:
+  builtinTunerName: TPE
+  classArgs:
+    optimize_mode: maximize
+trial:
+  command: python3 ensemble_mdda.py
+  codeDir: .
+  #codeDir: /mnt/rdai/reddragon/research/textgraphs/worldtree_corpus/src
+  gpuNum: 0
+
+#pythonPath: ../env38/bin
