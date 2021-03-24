@@ -205,6 +205,7 @@ def cli_main():
     parser.add_argument("--num_labels", type=int, default=1)
     parser.add_argument("--neg_samples", type=int, default=0)
     parser.add_argument("--base", type=str, default="bert-base-uncased")
+    parser.add_argument("--load", type=str, default=None)
     args = parser.parse_args()
     if args.num_labels !=1 and args.num_labels != 4:
         raise NotImplementedError("num labels can only either be 1 or 4")
@@ -234,18 +235,29 @@ def cli_main():
         pred_dataset, batch_size=args.batch_size, shuffle=False
     )
 
-    # model
-    model = TransformerRanker(num_labels=args.num_labels, base=args.base)
-
-    # ------------
-    # training
-    # ------------
     early_stopping_callback = pl.callbacks.EarlyStopping(monitor="ndcg", mode='max', patience=2)
     checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor="ndcg", mode='max', verbose=True)
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=[early_stopping_callback, checkpoint_callback]
     )
-    trainer.fit(model, train_loader, pred_dataloader)
+    if args.load is None:
+        model = TransformerRanker(num_labels=args.num_labels, base=args.base)
+        trainer.fit(model, train_loader, pred_dataloader)
+        model = TransformerRanker.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
+    else:
+        model = TransformerRanker.load_from_checkpoint("lightning_logs/version_8/checkpoints/epoch=3-step=7831.ckpt")
+
+    test_dataset = QuestionRatingDataset(
+        "data/wt-expert-ratings.test.json", tokenizer=tokenizer
+    )
+    pred_test_dataset = PredictDataset(
+        "predict.test.baseline-retrieval.hyperopt.txt", tokenizer, test_dataset, exp_dataset
+    )
+    pred_test_dataloader = torch.utils.data.DataLoader(
+        pred_test_dataset, batch_size=args.batch_size, shuffle=False,
+        num_workers=8
+    )
+    trainer.test(model, test_dataloaders=pred_test_dataloader)
 
 if __name__ == "__main__":
     cli_main()
