@@ -4,7 +4,7 @@
 authorName: default
 experimentName: ensemble_mdda
 trialConcurrency: 8
-maxExecDuration: 12m
+maxExecDuration: 20m
 #maxExecDuration: 6h
 #maxTrialNum: 10
 
