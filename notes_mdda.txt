@@ -372,3 +372,25 @@ torch.nn.CrossEntropyLoss(ignore_index=-1)( torch.tensor([1.,1.,1,1,1,1]).unsque
 torch.nn.CrossEntropyLoss(ignore_index=-1)( torch.tensor([0.,0,0,0,0,0]).unsqueeze(0), torch.tensor([-1]) )
 # ==0
 """
+
+
+# Next : add negative samples corresponding to 'train.retrieval' 
+#          so that sigmoid 'yes/no' indicator isn't biased by mainly-positive training
+
+python model_mdda.py --loss_style 2 --num_labels 7 --base distilbert --neg_retrievals predictions/predict.train.baseline-retrieval.hyperopt.txt
+# lightning_logs/version_45/predict.dev.bert0.txt
+./evaluate.py --gold data-evalperiod/wt-expert-ratings.dev.json ../lightning_logs/version_45/predict.dev.bert0.txt
+# Mean NDCG Score : 0.665267
+
+python model_mdda.py --load lightning_logs/version_45/checkpoints/epoch\=3-step\=114839.ckpt
+prediction ndcg: 0.6767
+
+
+
+python model_mdda.py --loss_style 2 --num_labels 7 --base bert --neg_retrievals predictions/predict.train.baseline-retrieval.hyperopt.txt
+prediction ndcg: 0.4060
+
+python model_mdda.py --load lightning_logs/version_47/checkpoints/epoch\=3-step\=114839.ckpt
+prediction ndcg: 0.6835
+
+

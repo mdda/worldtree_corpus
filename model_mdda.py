@@ -246,7 +246,7 @@ class TransformerRanker(pl.LightningModule):
                 # f992-5698-76aa-c6de : 0.1424 [0.3784, 0.3788, 0.0781, 0.1283, 0.0143, 0.0220]
                 # 20e2-689d-b7c6-528a : 0.9689 [0.2940, 0.4254, 0.2266, 0.0511, 0.0024, 0.0005]
                 # b429-cf83-df90-a688 : 0.9995 [0.0009, 0.0028, 0.0065, 0.0047, 0.0110, 0.9740]
-                # unfortunately, score is poor...
+                # unfortunately, score is poor...  And yes/no probabilities are v. high
                 s = ', '.join(f'{v:.4f}' for v in e[2])
                 print(f"{e[0]} : {e[1].item():.4f} [{s}]")
 
@@ -292,6 +292,7 @@ def cli_main():
     parser.add_argument("--num_labels", type=int, default=1)
     parser.add_argument("--loss_style", type=int, default=1)
     parser.add_argument("--neg_samples", type=int, default=0)
+    parser.add_argument("--neg_retrievals", type=str, default=None)
     parser.add_argument("--load", type=str, default=None)
     parser.add_argument("--base", type=str, default="bert")
     parser.add_argument("--fold", type=str, default="dev")
@@ -309,10 +310,16 @@ def cli_main():
 
     # data
     exp_dataset = ExplanationDataset("data/tables")
+
+    pred_retrieval = None
+    if args.neg_retrievals is not None:
+        pred_retrieval = PredictManager.read(args.neg_retrievals)
+
     train_dataset = QuestionRatingDataset(
         "data/wt-expert-ratings.train.json",
         explanation_dataset=exp_dataset,
         neg_samples=args.neg_samples,
+        neg_retrievals=pred_retrieval, 
         tokenizer=tokenizer,
     )
     val_dataset = QuestionRatingDataset(

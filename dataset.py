@@ -11,9 +11,15 @@ from retriever import PredictManager
 
 
 class QuestionRatingDataset(torch.utils.data.Dataset):
-    def __init__(self, path, explanation_dataset=None, neg_samples=0, tokenizer=None):
+    def __init__(self, path, explanation_dataset=None, tokenizer=None, 
+        neg_samples=0, neg_retrievals=None):
         with open(path, "rb") as f:
             questions_file = json.load(f)
+
+        if neg_retrievals is not None:  # Group the retrieval results by qid
+            neg_retrieval_by_qid = {
+                pred.qid:pred.eids for pred in neg_retrievals # neg_retrieval is a [Prediction]
+            }
 
         question_ratings, qid_to_question_text = [], dict()
         for question_rating in questions_file["rankingProblems"]:
@@ -42,7 +48,7 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
                     }
                 )
                 cur_exp_ids.append(explanation_id)
-            if neg_samples > 0:
+            if neg_samples > 0:  # This is arbitrary negative samples from the full explanations
                 assert explanation_dataset is not None
                 exp_df = explanation_dataset.explanations
                 len_exp = len(exp_df)
@@ -65,6 +71,28 @@ class QuestionRatingDataset(torch.utils.data.Dataset):
                         }
                     )
                     cur_exp_ids.append(i)
+                    
+            # Now do negative samples from the training retrieval set 
+            #   since it is most like the dev/test retrieval set we'll be tested on
+            if neg_retrievals is not None:
+                assert explanation_dataset is not None
+                #exp_df = explanation_dataset.explanations
+                cur_exp_ids_set = set(cur_exp_ids)
+                for eid in neg_retrieval_by_qid.get(question_id, []):
+                    if eid not in cur_exp_ids_set:
+                        #exp = exp_df['explanation_id']=explanation_id
+                        question_ratings.append(
+                            {
+                                "question_id": question_id,
+                                "question_text": question_text,
+                                "explanation_id": eid,
+                                "explanation_text": explanation_dataset.get_explanation(eid),
+                                "relevance": 0,
+                                "is_gold": "0",
+                                "gold_role": "",
+                            }
+                        )
+                        #cur_exp_ids.append(i) # No need here - no dupes...
 
         self.qid_to_question_text = qid_to_question_text
 
